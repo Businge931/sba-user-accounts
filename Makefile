@@ -7,6 +7,13 @@ LINT_PATH = $(GOBASE)/build/lint
 MAIN_APP = $(GOBASE)/cmd
 MIGRATIONS_PATH=$(GOBASE)/migrations
 
+# Default database connection details (matches docker-compose.yml)
+DB_USER ?= admin
+DB_PASSWORD ?= adminpassword
+DB_NAME ?= sba_users
+DB_HOST ?= localhost
+DB_PORT ?= 5432
+DB_ADDR ?= postgres://$(DB_USER):$(DB_PASSWORD)@$(DB_HOST):$(DB_PORT)/$(DB_NAME)?sslmode=disable
 
 
 help:
@@ -48,4 +55,3 @@ migration: ## Create a new migration
 
 # test-coverage-browser: ## Check the test coverage in the browser
 # 	cd $(TEST_PATH) && go tool cover -html=coverage.out -o /tmp/coverage.html && wslview /tmp/coverage.html
-

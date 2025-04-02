@@ -29,15 +29,15 @@ type loginRequest struct {
 	Password string `json:"password"`
 }
 
-type resetPasswordRequest struct {
-	Token       string `json:"token"`
-	NewPassword string `json:"new_password"`
-}
+// type resetPasswordRequest struct {
+// 	Token       string `json:"token"`
+// 	NewPassword string `json:"new_password"`
+// }
 
-type changePasswordRequest struct {
-	OldPassword string `json:"old_password"`
-	NewPassword string `json:"new_password"`
-}
+// type changePasswordRequest struct {
+// 	OldPassword string `json:"old_password"`
+// 	NewPassword string `json:"new_password"`
+// }
 
 func (h *Handler) RegisterHandler(w http.ResponseWriter, r *http.Request) {
 	var req registerRequest
@@ -72,65 +72,65 @@ func (h *Handler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{"token": token})
 }
 
-func (h *Handler) VerifyEmailHandler(w http.ResponseWriter, r *http.Request) {
-	token := r.URL.Query().Get("token")
-	if token == "" {
-		http.Error(w, "Missing token", http.StatusBadRequest)
-		return
-	}
+// func (h *Handler) VerifyEmailHandler(w http.ResponseWriter, r *http.Request) {
+// 	token := r.URL.Query().Get("token")
+// 	if token == "" {
+// 		http.Error(w, "Missing token", http.StatusBadRequest)
+// 		return
+// 	}
 
-	if err := h.authService.VerifyEmail(token); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
+// 	if err := h.authService.VerifyEmail(token); err != nil {
+// 		http.Error(w, err.Error(), http.StatusBadRequest)
+// 		return
+// 	}
 
-	w.WriteHeader(http.StatusOK)
-}
+// 	w.WriteHeader(http.StatusOK)
+// }
 
-func (h *Handler) RequestPasswordResetHandler(w http.ResponseWriter, r *http.Request) {
-	email := r.URL.Query().Get("email")
-	if email == "" {
-		http.Error(w, "Missing email", http.StatusBadRequest)
-		return
-	}
+// func (h *Handler) RequestPasswordResetHandler(w http.ResponseWriter, r *http.Request) {
+// 	email := r.URL.Query().Get("email")
+// 	if email == "" {
+// 		http.Error(w, "Missing email", http.StatusBadRequest)
+// 		return
+// 	}
 
-	if err := h.authService.RequestPasswordReset(email); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
+// 	if err := h.authService.RequestPasswordReset(email); err != nil {
+// 		http.Error(w, err.Error(), http.StatusBadRequest)
+// 		return
+// 	}
 
-	w.WriteHeader(http.StatusOK)
-}
+// 	w.WriteHeader(http.StatusOK)
+// }
 
-func (h *Handler) ResetPasswordHandler(w http.ResponseWriter, r *http.Request) {
-	var req resetPasswordRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
-		return
-	}
+// func (h *Handler) ResetPasswordHandler(w http.ResponseWriter, r *http.Request) {
+// 	var req resetPasswordRequest
+// 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+// 		http.Error(w, "Invalid request body", http.StatusBadRequest)
+// 		return
+// 	}
 
-	if err := h.authService.ResetPassword(req.Token, req.NewPassword); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
+// 	if err := h.authService.ResetPassword(req.Token, req.NewPassword); err != nil {
+// 		http.Error(w, err.Error(), http.StatusBadRequest)
+// 		return
+// 	}
 
-	w.WriteHeader(http.StatusOK)
-}
+// 	w.WriteHeader(http.StatusOK)
+// }
 
-func (h *Handler) ChangePasswordHandler(w http.ResponseWriter, r *http.Request) {
-	var req changePasswordRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
-		return
-	}
+// func (h *Handler) ChangePasswordHandler(w http.ResponseWriter, r *http.Request) {
+// 	var req changePasswordRequest
+// 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+// 		http.Error(w, "Invalid request body", http.StatusBadRequest)
+// 		return
+// 	}
 
-	// Get userID from context (set by authentication middleware)
-	userID := r.Context().Value("userID").(string)
+// 	// Get userID from context (set by authentication middleware)
+// 	userID := r.Context().Value("userID").(string)
 
-	if err := h.authService.ChangePassword(userID, req.OldPassword, req.NewPassword); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
+// 	if err := h.authService.ChangePassword(userID, req.OldPassword, req.NewPassword); err != nil {
+// 		http.Error(w, err.Error(), http.StatusBadRequest)
+// 		return
+// 	}
 
-	w.WriteHeader(http.StatusOK)
-}
+// 	w.WriteHeader(http.StatusOK)
+// }
