@@ -1,45 +1,64 @@
 package services
 
 import (
-	"errors"
 	"fmt"
-	"math/rand"
 	"time"
 
-	"github.com/Businge931/sba-user-accounts/internal/core/domain"
-	"github.com/Businge931/sba-user-accounts/internal/core/ports"
 	"golang.org/x/crypto/bcrypt"
+
+	"github.com/Businge931/sba-user-accounts/internal/core/domain"
+	"github.com/Businge931/sba-user-accounts/internal/core/errors"
+	"github.com/Businge931/sba-user-accounts/internal/core/ports"
+	"github.com/Businge931/sba-user-accounts/internal/core/validation"
 )
 
 type authService struct {
-	userRepo ports.UserRepository
-	authRepo ports.AuthRepository
-	// emailSvc    ports.EmailService
-	jwtSecret   []byte
-	tokenExpiry time.Duration
+	userRepo  ports.UserRepository
+	authRepo  ports.AuthRepository
+	tokenSvc  ports.TokenService
+	validator *validation.Validator
+	logger    ports.Logger
 }
 
 // NewAuthService creates a new instance of authentication service
 func NewAuthService(
 	userRepo ports.UserRepository,
 	authRepo ports.AuthRepository,
-	// emailSvc ports.EmailService,
-	jwtSecret []byte,
-	tokenExpiry time.Duration,
+	tokenSvc ports.TokenService,
+	validator *validation.Validator,
+	logger ports.Logger,
 ) ports.AuthService {
 	return &authService{
-		userRepo: userRepo,
-		authRepo: authRepo,
-		// emailSvc:    emailSvc,
-		jwtSecret:   jwtSecret,
-		tokenExpiry: tokenExpiry,
+		userRepo:  userRepo,
+		authRepo:  authRepo,
+		tokenSvc:  tokenSvc,
+		validator: validator,
+		logger:    logger,
 	}
 }
 
-func (s *authService) Register(email, password, firstName, lastName string) (*domain.User, error) {
+func (svc *authService) Register(email, password, firstName, lastName string) (*domain.User, error) {
+	// Validate input data
+	if err := svc.validator.ValidateEmail(email); err != nil {
+		return nil, err
+	}
+
+	if err := svc.validator.ValidatePassword(password); err != nil {
+		return nil, err
+	}
+
+	if err := svc.validator.ValidateName(firstName, "first name"); err != nil {
+		return nil, err
+	}
+
+	if err := svc.validator.ValidateName(lastName, "last name"); err != nil {
+		return nil, err
+	}
+
 	// Check if user already exists
-	if existing, _ := s.userRepo.GetByEmail(email); existing != nil {
-		return nil, errors.New("user already exists")
+	if existing, _ := svc.userRepo.GetByEmail(email); existing != nil {
+		svc.logger.Infof("Registration attempt with existing email: %s", email)
+		return nil, errors.NewAlreadyExistsError("user already exists", nil)
 	}
 
 	// Hash password
@@ -51,55 +70,48 @@ func (s *authService) Register(email, password, firstName, lastName string) (*do
 	// Create user with UUID
 	user := domain.NewUser(email, firstName, lastName)
 	user.HashedPassword = string(hashedPassword)
-	user.ID = generateUUID() // Generate a unique ID
+	// Use UUID from standard library - this would be better, but keeping format similar
+	user.ID = fmt.Sprintf("%d-%d", time.Now().UnixNano(), time.Now().Nanosecond())
 
-	if err := s.userRepo.Create(user); err != nil {
+	if err := svc.userRepo.Create(user); err != nil {
 		return nil, err
 	}
 
 	// Skip verification token if authRepo is nil
-	if s.authRepo != nil {
-		// Generate and send verification token
-		token := generateToken()
-		if err := s.authRepo.StoreVerificationToken(user.ID, token); err != nil {
+	if svc.authRepo != nil {
+		// Generate and send verification token using the token service
+		token := svc.tokenSvc.GenerateVerificationToken()
+		if err := svc.authRepo.StoreVerificationToken(user.ID, token); err != nil {
 			// Just log the error and continue
 			// Don't return an error as this is optional functionality
+			svc.logger.Warnf("Failed to store verification token for user %s: %v", user.ID, err)
 		}
-
-		// Send verification email - skipped as EmailService not implemented
 	}
+
+	// Send verification email - skipped as EmailService not implemented
 
 	return user, nil
 }
 
-// generateUUID generates a simple UUID for user identification
-func generateUUID() string {
-	now := time.Now()
-	rand.Seed(now.UnixNano())
-	return fmt.Sprintf("%d-%d", now.UnixNano(), rand.Intn(10000))
-}
+func (svc *authService) Login(email, password string) (string, error) {
+	// Validate email
+	if err := svc.validator.ValidateEmail(email); err != nil {
+		return "", err
+	}
 
-// Standard error messages for consistent handling
-const (
-	ErrMsgUserNotFound    = "USER_NOT_FOUND"
-	ErrMsgInvalidPassword = "INVALID_PASSWORD"
-	ErrMsgEmailNotVerified = "EMAIL_NOT_VERIFIED"
-)
-
-func (s *authService) Login(email, password string) (string, error) {
 	// Check if user exists
-	user, err := s.userRepo.GetByEmail(email)
+	user, err := svc.userRepo.GetByEmail(email)
 	if err != nil {
 		// Log the actual error for debugging purposes
-		fmt.Printf("Error getting user by email: %v\n", err)
-		return "", errors.New(ErrMsgUserNotFound)
+		svc.logger.Debugf("Error getting user by email: %v", err)
+		return "", errors.NewNotFoundError("user not found", err)
 	}
 
 	// Check if password is correct
-	if err := bcrypt.CompareHashAndPassword([]byte(user.HashedPassword), []byte(password)); err != nil {
+	if compareErr := bcrypt.CompareHashAndPassword([]byte(user.HashedPassword), []byte(password)); compareErr != nil {
 		// Log the error but don't expose it in the response
-		fmt.Printf("Password comparison failed: %v\n", err)
-		return "", errors.New(ErrMsgInvalidPassword)
+		svc.logger.Debugf("Password comparison failed: %v", compareErr)
+		return "", errors.NewInvalidAuthError("invalid password", compareErr)
 	}
 
 	// Temporarily bypassing email verification check for testing
@@ -107,8 +119,11 @@ func (s *authService) Login(email, password string) (string, error) {
 	// 	return "", ErrEmailNotVerified
 	// }
 
-	// Generate JWT token
-	token := generateJWT(user.ID, s.jwtSecret, s.tokenExpiry)
+	// Generate JWT token using token service
+	token, err := svc.tokenSvc.GenerateToken(user.ID)
+	if err != nil {
+		return "", fmt.Errorf("failed to generate token: %w", err)
+	}
 	return token, nil
 }
 

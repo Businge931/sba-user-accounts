@@ -2,35 +2,36 @@ package grpc
 
 import (
 	"context"
-	"fmt"
+
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"github.com/Businge931/sba-user-accounts/internal/core/ports"
 	"github.com/Businge931/sba-user-accounts/proto"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 )
 
 // AuthServer implements the gRPC AuthService server interface
 type AuthServer struct {
-	AuthService ports.AuthService
+	AuthService  ports.AuthService
+	tokenService ports.TokenService
+	logger       ports.Logger
 	proto.UnimplementedAuthServiceServer
 }
 
 // Register handles user registration requests from the API gateway
-func (s *AuthServer) Register(ctx context.Context, req *proto.RegisterRequest) (*proto.RegisterResponse, error) {
+func (server *AuthServer) Register(_ context.Context, req *proto.RegisterRequest) (*proto.RegisterResponse, error) {
 	// Validate request
-	if req.Username == "" || req.Password == "" {
+	if req.GetUsername() == "" || req.GetPassword() == "" {
 		return nil, status.Error(codes.InvalidArgument, "missing required fields")
 	}
 
 	// Call the core auth service to handle registration logic
 	// Extract first and last name from username if possible, or use username for both
-	firstName := req.Username
+	firstName := req.GetUsername()
 	lastName := ""
 
 	// Call the service with parameters matching the actual interface
-	// user, err := s.AuthService.Register(req.Username, req.Password, firstName, lastName)
-	_, err := s.AuthService.Register(req.Username, req.Password, firstName, lastName)
+	_, err := server.AuthService.Register(req.GetUsername(), req.GetPassword(), firstName, lastName)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
@@ -42,20 +43,20 @@ func (s *AuthServer) Register(ctx context.Context, req *proto.RegisterRequest) (
 }
 
 // Login handles user login requests from the API gateway
-func (s *AuthServer) Login(ctx context.Context, req *proto.LoginRequest) (*proto.LoginResponse, error) {
+func (server *AuthServer) Login(_ context.Context, req *proto.LoginRequest) (*proto.LoginResponse, error) {
 	// Validate request
-	if req.Username == "" || req.Password == "" {
+	if req.GetUsername() == "" || req.GetPassword() == "" {
 		return nil, status.Error(codes.InvalidArgument, "Missing username or password")
 	}
 
 	// Call the core auth service to handle login logic
 	// Use username as email for login
-	token, err := s.AuthService.Login(req.Username, req.Password)
+	token, err := server.AuthService.Login(req.GetUsername(), req.GetPassword())
 	if err != nil {
 		// Handle different error types based on the error message
 		errMsg := err.Error()
-		fmt.Printf("Login error for user %s: %s\n", req.Username, errMsg)
-		
+		server.logger.Infof("Login error for user %s: %s", req.GetUsername(), errMsg)
+
 		// Map error messages to appropriate gRPC status codes and user-friendly messages
 		switch errMsg {
 		case "USER_NOT_FOUND":
@@ -79,19 +80,21 @@ func (s *AuthServer) Login(ctx context.Context, req *proto.LoginRequest) (*proto
 
 // VerifyToken validates a JWT token and returns user information
 // This is a simplified implementation since we don't have a direct method in the AuthService
-func (s *AuthServer) VerifyToken(ctx context.Context, req *proto.VerifyTokenRequest) (*proto.VerifyTokenResponse, error) {
+func (server *AuthServer) VerifyToken(_ context.Context, req *proto.VerifyTokenRequest) (*proto.VerifyTokenResponse, error) {
 	// Validate request
-	if req.Token == "" {
+	if req.GetToken() == "" {
 		return nil, status.Error(codes.InvalidArgument, "token is required")
 	}
 
-	// TODO: Implement actual token verification
-	// Currently the AuthService doesn't have a method for token verification
-	// This is a placeholder implementation that always succeeds
-	// In a real implementation, we would call a method to validate the token
+	// Attempt to verify the token using TokenService if available
+	if server.tokenService != nil {
+		_, err := server.tokenService.ValidateToken(req.GetToken())
+		if err != nil {
+			server.logger.Warnf("Token validation failed: %v", err)
+			return nil, status.Error(codes.Unauthenticated, "Invalid or expired token")
+		}
+	}
 
-	// For now, return a success response
-	// In production, this should be properly implemented
 	return &proto.VerifyTokenResponse{
 		Success: true,
 		Message: "Token is valid",

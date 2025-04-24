@@ -35,7 +35,7 @@ func NewAuthRepository(db *sql.DB) *AuthRepository {
 }
 
 // ensureTokenTable creates the tokens table if it doesn't exist
-func (r *AuthRepository) ensureTokenTable() error {
+func (repo *AuthRepository) ensureTokenTable() error {
 	// Create tokens table if it doesn't exist
 	query := `
 	CREATE TABLE IF NOT EXISTS tokens (
@@ -46,41 +46,34 @@ func (r *AuthRepository) ensureTokenTable() error {
 		created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 	)
 	`
-	_, err := r.db.Exec(query)
+	_, err := repo.db.Exec(query)
 	return err
 }
 
 // StoreVerificationToken stores a verification token for a user
-func (r *AuthRepository) StoreVerificationToken(userID, token string) error {
+func (repo *AuthRepository) StoreVerificationToken(userID, token string) error {
 	// Ensure the tokens table exists
-	if err := r.ensureTokenTable(); err != nil {
+	if err := repo.ensureTokenTable(); err != nil {
 		return err
 	}
 
 	// First, delete any existing verification tokens for this user
 	deleteQuery := `DELETE FROM tokens WHERE user_id = $1 AND token_type = $2`
-	_, err := r.db.Exec(deleteQuery, userID, VerificationToken)
+	_, err := repo.db.Exec(deleteQuery, userID, VerificationToken)
 	if err != nil {
 		return err
 	}
 
 	// Store the new token with an expiry of 24 hours
-	query := `
-	INSERT INTO tokens (token_id, user_id, token_type, expiry_time)
-	VALUES ($1, $2, $3, $4)
-	`
-	_, err = r.db.Exec(
-		query,
-		token,
-		userID,
-		VerificationToken,
-		time.Now().Add(24*time.Hour),
-	)
+	query := `INSERT INTO tokens (user_id, token_type, token, created_at, expires_at)
+	VALUES ($1, 'verification', $2, NOW(), NOW() + INTERVAL '24 hours')`
+
+	_, err = repo.db.Exec(query, userID, token)
 	return err
 }
 
 // GetUserIDByVerificationToken retrieves the user ID associated with a verification token
-func (r *AuthRepository) GetUserIDByVerificationToken(token string) (string, error) {
+func (repo *AuthRepository) GetUserIDByVerificationToken(token string) (string, error) {
 	query := `
 	SELECT user_id, expiry_time FROM tokens 
 	WHERE token_id = $1 AND token_type = $2
@@ -88,7 +81,7 @@ func (r *AuthRepository) GetUserIDByVerificationToken(token string) (string, err
 	var userID string
 	var expiryTime time.Time
 
-	err := r.db.QueryRow(query, token, VerificationToken).Scan(&userID, &expiryTime)
+	err := repo.db.QueryRow(query, token, VerificationToken).Scan(&userID, &expiryTime)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return "", ErrNotFound
@@ -105,36 +98,29 @@ func (r *AuthRepository) GetUserIDByVerificationToken(token string) (string, err
 }
 
 // StoreResetToken stores a password reset token for a user
-func (r *AuthRepository) StoreResetToken(userID, token string) error {
+func (repo *AuthRepository) StoreResetToken(userID, token string) error {
 	// Ensure the tokens table exists
-	if err := r.ensureTokenTable(); err != nil {
+	if err := repo.ensureTokenTable(); err != nil {
 		return err
 	}
 
 	// First, delete any existing reset tokens for this user
 	deleteQuery := `DELETE FROM tokens WHERE user_id = $1 AND token_type = $2`
-	_, err := r.db.Exec(deleteQuery, userID, ResetToken)
+	_, err := repo.db.Exec(deleteQuery, userID, ResetToken)
 	if err != nil {
 		return err
 	}
 
 	// Store the new token with an expiry of 1 hour
-	query := `
-	INSERT INTO tokens (token_id, user_id, token_type, expiry_time)
-	VALUES ($1, $2, $3, $4)
-	`
-	_, err = r.db.Exec(
-		query,
-		token,
-		userID,
-		ResetToken,
-		time.Now().Add(1*time.Hour),
-	)
+	query := `INSERT INTO tokens (user_id, token_type, token, created_at, expires_at)
+	VALUES ($1, 'reset', $2, NOW(), NOW() + INTERVAL '1 hour')`
+
+	_, err = repo.db.Exec(query, userID, token)
 	return err
 }
 
 // GetUserIDByResetToken retrieves the user ID associated with a reset token
-func (r *AuthRepository) GetUserIDByResetToken(token string) (string, error) {
+func (repo *AuthRepository) GetUserIDByResetToken(token string) (string, error) {
 	query := `
 	SELECT user_id, expiry_time FROM tokens 
 	WHERE token_id = $1 AND token_type = $2
@@ -142,7 +128,7 @@ func (r *AuthRepository) GetUserIDByResetToken(token string) (string, error) {
 	var userID string
 	var expiryTime time.Time
 
-	err := r.db.QueryRow(query, token, ResetToken).Scan(&userID, &expiryTime)
+	err := repo.db.QueryRow(query, token, ResetToken).Scan(&userID, &expiryTime)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return "", ErrNotFound

@@ -5,97 +5,62 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
-	"github.com/Businge931/sba-user-accounts/cmd/env"
-	"github.com/Businge931/sba-user-accounts/internal/adapters/secondary/postgres"
-	"github.com/Businge931/sba-user-accounts/internal/core/services"
 	_ "github.com/lib/pq"
-	log "github.com/sirupsen/logrus"
+
+	"github.com/Businge931/sba-user-accounts/internal/adapters/primary/grpc"
+	"github.com/Businge931/sba-user-accounts/internal/adapters/secondary/logging"
+	"github.com/Businge931/sba-user-accounts/internal/adapters/secondary/postgres"
+	"github.com/Businge931/sba-user-accounts/internal/config"
+	"github.com/Businge931/sba-user-accounts/internal/core/factories"
+	"github.com/Businge931/sba-user-accounts/internal/core/ports"
 )
 
-type dbConfig struct {
-	Host     string
-	Port     string
-	User     string
-	Password string
-	Name     string
-}
-
-type authConfig struct {
-	JWTSecret      string
-	TokenExpiryMin int
-}
-
-type serverConfig struct {
-	HTTPPort string
-	GRPCPort string
-}
-
 func main() {
-	// Set up logging
-	log.SetFormatter(&log.JSONFormatter{})
-	log.SetOutput(os.Stdout)
-	log.SetLevel(log.InfoLevel)
+	// Set up logging using our adapter
+	logger := logging.NewLogrusAdapter()
 
-	log.Info("Starting sba-user-accounts service")
+	logger.Info("Starting sba-user-accounts service")
 
-	// Load configurations
-	dbConfig := dbConfig{
-		Host:     env.GetEnv("DB_HOST", "localhost"),
-		Port:     env.GetEnv("DB_PORT", "5432"),
-		User:     env.GetEnv("DB_USER", "admin"),
-		Password: env.GetEnv("DB_PASSWORD", "adminpassword"),
-		Name:     env.GetEnv("DB_NAME", "sba_users"),
-	}
-
-	authConfig := authConfig{
-		JWTSecret:      env.GetEnv("JWT_SECRET", "your-secret-key"),
-		TokenExpiryMin: env.GetInt("TOKEN_EXPIRY_MIN", 60),
-	}
-
-	serverConfig := serverConfig{
-		// HTTPPort: env.GetEnv("HTTP_PORT", "8081"),
-		GRPCPort: env.GetEnv("GRPC_PORT", "50051"), // Updated port for user-accounts service
-	}
+	// Load configurations from environment variables
+	cfg := config.Load()
 
 	// Initialize database connection
-	db, err := initDB(dbConfig)
+	dbFactory := postgres.NewDBFactory(cfg.DB)
+	db, err := dbFactory.Connect()
 	if err != nil {
-		log.Fatalf("Failed to initialize database: %v", err)
+		logger.Fatalf("Failed to initialize database: %v", err)
 	}
 	defer db.Close()
-	log.Info("Database connection established")
+	logger.Info("Database connection established")
 
-	// Initialize repositories
-	userRepo := postgres.NewUserRepository(db)
-	authRepo := postgres.NewAuthRepository(db) // Using DB-backed auth repository
-	log.Info("Repositories initialized")
+	// Use the service factory to initialize all repositories and services
+	serviceFactory := factories.NewServiceFactory(db, cfg)
+	serviceFactory.InitializeRepositories()
+	logger.Info("Repositories initialized")
 
-	// Initialize services
-	authService := services.NewAuthService(
-		userRepo,
-		authRepo, // Using the new DB-backed auth repository
-		[]byte(authConfig.JWTSecret),
-		time.Duration(authConfig.TokenExpiryMin)*time.Minute,
-	)
-	log.Info("Auth service initialized")
+	serviceFactory.InitializeServices()
+	logger.Info("Services initialized")
+
+	// Get the auth service from the factory
+	authService := serviceFactory.GetAuthService()
 
 	// Create a context that listens for interruption signals
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	setupGracefulShutdown(cancel)
+	setupGracefulShutdown(cancel, logger)
 
-	// Initialize and start API with gRPC server
-	api := NewAPI(Config{
-		ServerPort: serverConfig.GRPCPort,
-	}, authService)
+	// Get token service from factory
+	tokenService := serviceFactory.GetTokenService()
 
-	log.Infof("Starting gRPC server on port %s", serverConfig.GRPCPort)
+	// Initialize and start gRPC server
+	server := grpc.NewServer(cfg.Server.GRPCPort, authService, tokenService, logger)
+
+	logger.Infof("Starting gRPC server on port %s", cfg.Server.GRPCPort)
 	go func() {
-		if err := api.Start(); err != nil {
-			log.Errorf("gRPC server failed: %v", err)
+		if err := server.Start(); err != nil {
+			logger.Errorf("gRPC server failed: %v", err)
 			cancel()
 		}
 	}()
@@ -104,19 +69,19 @@ func main() {
 	<-ctx.Done()
 
 	// Graceful shutdown
-	log.Info("Shutting down servers")
-	api.grpcServer.GracefulStop()
-	log.Info("Shutdown complete")
+	logger.Info("Shutting down servers")
+	server.GracefulStop()
+	logger.Info("Shutdown complete")
 }
 
 // setupGracefulShutdown sets up signal handling for graceful shutdown
-func setupGracefulShutdown(cancel context.CancelFunc) {
+func setupGracefulShutdown(cancel context.CancelFunc, logger ports.Logger) {
 	signalChan := make(chan os.Signal, 1)
 	signal.Notify(signalChan, os.Interrupt, syscall.SIGTERM)
 
 	go func() {
 		<-signalChan
-		log.Info("Received interrupt signal, initiating graceful shutdown")
+		logger.Info("Received interrupt signal, initiating graceful shutdown")
 		cancel()
 	}()
 }
