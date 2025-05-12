@@ -4,7 +4,7 @@ APP = sba-user-accounts
 GOBASE = $(shell pwd)
 GOBIN = $(GOBASE)/build/bin
 LINT_PATH = $(GOBASE)/build/lint
-MAIN_APP = $(GOBASE)/cmd
+MAIN_APP = $(GOBASE)/cmd/api
 MIGRATIONS_PATH=$(GOBASE)/migrations
 
 # Default database connection details (matches docker-compose.yml)
@@ -23,6 +23,9 @@ deps: ## Fetch required dependencies
 	go mod tidy -compat=1.22
 	go mod download
 
+build: ## Build the application
+	go build -o $(GOBIN)/$(APP) $(MAIN_APP)
+
 run: build ## Build and run program
 	cd $(MAIN_APP) && go run .
 
@@ -36,13 +39,13 @@ install-golangci: ## Install the correct version of lint
 	@GOBIN=$(LINT_PATH) go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.58.1
 
 migrate-up: ## Run the migration up
-	@migrate -path=$(MIGRATIONS_PATH) -database=$(DB_ADDR) up $(filter-out $@,$(MAKECMDGOALS))
+	@/home/businge-bisanga/go/bin/migrate -path=$(MIGRATIONS_PATH) -database=$(DB_ADDR) up $(filter-out $@,$(MAKECMDGOALS))
 
 migrate-down: ## Run the migration down
-	@migrate -path=$(MIGRATIONS_PATH) -database=$(DB_ADDR) down
+	@/home/businge-bisanga/go/bin/migrate -path=$(MIGRATIONS_PATH) -database=$(DB_ADDR) down
 
 migration: ## Create a new migration
-	@migrate create -ext sql -dir $(MIGRATIONS_PATH) -seq $(filter-out $@,$(MAKECMDGOALS))		
+	@/home/businge-bisanga/go/bin/migrate create -ext sql -dir $(MIGRATIONS_PATH) -seq $(filter-out $@,$(MAKECMDGOALS))		
 
 
 # run-tests: ## Run tests 
