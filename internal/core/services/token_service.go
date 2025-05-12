@@ -73,10 +73,10 @@ func (s *jwtTokenService) ValidateToken(tokenString string) (string, error) {
 
 // GenerateVerificationToken creates a token for email verification
 func (s *jwtTokenService) GenerateVerificationToken() string {
-	return generateToken()
+	return GenerateToken()
 }
 
 // GenerateResetToken creates a token for password reset
 func (s *jwtTokenService) GenerateResetToken() string {
-	return generateToken()
+	return GenerateToken()
 }

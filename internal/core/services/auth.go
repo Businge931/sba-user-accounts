@@ -8,8 +8,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
-// Helper functions to be implemented
-func generateToken() string {
+func GenerateToken() string {
 	// Generate a 32-byte random token
 	tokenBytes := make([]byte, 32)
 	_, err := rand.Read(tokenBytes)
@@ -21,7 +20,7 @@ func generateToken() string {
 	return base64.URLEncoding.EncodeToString(tokenBytes)
 }
 
-func generateJWT(userID string, secret []byte, expiry time.Duration) string {
+func GenerateJWT(userID string, secret []byte, expiry time.Duration) string {
 	// Create the claims for the JWT
 	claims := jwt.RegisteredClaims{
 		Subject:   userID,
