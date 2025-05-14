@@ -80,7 +80,7 @@ func (h *authServiceHandler) Login(ctx context.Context, req *proto.LoginRequest)
 // Register implements the Register RPC method
 func (h *authServiceHandler) Register(ctx context.Context, req *proto.RegisterRequest) (*proto.RegisterResponse, error) {
 	// Note: In a real implementation, we would parse more fields from the request
-	// For simplicity in tests, we're using dummy values for firstName and lastName
+	// For simplicity in tests, am using dummy values for firstName and lastName
 	_, err := h.authSvc.Register(req.Username, req.Password, "Test", "User")
 	if err != nil {
 		return &proto.RegisterResponse{
