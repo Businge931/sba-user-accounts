@@ -13,8 +13,8 @@ import (
 // AuthServer implements the gRPC AuthService server interface
 type AuthServer struct {
 	AuthService  ports.AuthService
-	tokenService ports.TokenService
-	logger       ports.Logger
+	TokenService ports.TokenService
+	Logger       ports.Logger
 	proto.UnimplementedAuthServiceServer
 }
 
@@ -55,7 +55,7 @@ func (server *AuthServer) Login(_ context.Context, req *proto.LoginRequest) (*pr
 	if err != nil {
 		// Handle different error types based on the error message
 		errMsg := err.Error()
-		server.logger.Infof("Login error for user %s: %s", req.GetUsername(), errMsg)
+		server.Logger.Infof("Login error for user %s: %s", req.GetUsername(), errMsg)
 
 		// Map error messages to appropriate gRPC status codes and user-friendly messages
 		switch errMsg {
@@ -87,10 +87,10 @@ func (server *AuthServer) VerifyToken(_ context.Context, req *proto.VerifyTokenR
 	}
 
 	// Attempt to verify the token using TokenService if available
-	if server.tokenService != nil {
-		_, err := server.tokenService.ValidateToken(req.GetToken())
+	if server.TokenService != nil {
+		_, err := server.TokenService.ValidateToken(req.GetToken())
 		if err != nil {
-			server.logger.Warnf("Token validation failed: %v", err)
+			server.Logger.Warnf("Token validation failed: %v", err)
 			return nil, status.Error(codes.Unauthenticated, "Invalid or expired token")
 		}
 	}
