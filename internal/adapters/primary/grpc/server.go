@@ -27,8 +27,8 @@ func NewServer(port string, authService ports.AuthService, tokenService ports.To
 	// Create and register auth server
 	authServer := &AuthServer{
 		AuthService:  authService,
-		tokenService: tokenService,
-		logger:       logger,
+		TokenService: tokenService,
+		Logger:       logger,
 	}
 	pb.RegisterAuthServiceServer(grpcServer, authServer)
 
