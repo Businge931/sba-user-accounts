@@ -7,23 +7,18 @@ import (
 	"github.com/Businge931/sba-user-accounts/internal/core/errors"
 )
 
-// Validator provides validation methods for input data
 type Validator struct{}
 
-// NewValidator creates a new validator
 func NewValidator() *Validator {
 	return &Validator{}
 }
 
-// ValidateEmail validates an email address
 func (v *Validator) ValidateEmail(email string) error {
 	email = strings.TrimSpace(email)
 	if email == "" {
 		return errors.NewInvalidInputError("email is required", nil)
 	}
 
-	// Simple regex for email validation
-	// In a production app you might want to use a more comprehensive regex
 	emailRegex := regexp.MustCompile(`^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$`)
 	if !emailRegex.MatchString(email) {
 		return errors.NewInvalidInputError("invalid email format", nil)
@@ -32,7 +27,6 @@ func (v *Validator) ValidateEmail(email string) error {
 	return nil
 }
 
-// ValidatePassword validates a password
 func (v *Validator) ValidatePassword(password string) error {
 	if len(password) < 8 {
 		return errors.NewInvalidInputError("password must be at least 8 characters", nil)
@@ -59,7 +53,6 @@ func (v *Validator) ValidatePassword(password string) error {
 	return nil
 }
 
-// ValidateName validates a name
 func (v *Validator) ValidateName(name, fieldName string) error {
 	name = strings.TrimSpace(name)
 	if name == "" {
