@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"github.com/Businge931/sba-user-accounts/internal/core/domain"
 	"github.com/Businge931/sba-user-accounts/internal/core/ports"
 )
 
@@ -52,7 +53,14 @@ func (h *Handler) RegisterHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := h.authService.Register(req.Email, req.Password, req.FirstName, req.LastName)
+	domainReq := domain.RegisterRequest{
+		Email:     req.Email,
+		Password:  req.Password,
+		FirstName: req.FirstName,
+		LastName:  req.LastName,
+	}
+
+	user, err := h.authService.Register(domainReq)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -79,7 +87,12 @@ func (h *Handler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	token, err := h.authService.Login(req.Email, req.Password)
+	domainReq := domain.LoginRequest{
+		Email:    req.Email,
+		Password: req.Password,
+	}
+
+	token, err := h.authService.Login(domainReq)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusUnauthorized)
 		return
