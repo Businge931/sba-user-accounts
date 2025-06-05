@@ -1,145 +1,128 @@
 package postgres
 
 import (
-	"database/sql"
 	"errors"
 	"time"
-)
 
-// Errors returned by the repository
-var (
-	ErrNotFound     = errors.New("record not found")
-	ErrTokenExpired = errors.New("token has expired")
-)
+	"gorm.io/gorm"
 
-// TokenType represents the type of token
-type TokenType string
-
-const (
-	// VerificationToken is used for email verification
-	VerificationToken TokenType = "verification"
-	// ResetToken is used for password reset
-	ResetToken TokenType = "reset"
+	"github.com/Businge931/sba-user-accounts/internal/core/domain"
 )
 
 // AuthRepository implements the ports.AuthRepository interface using PostgreSQL
 type AuthRepository struct {
-	db *sql.DB
+	db *gorm.DB
 }
 
 // NewAuthRepository creates a new instance of PostgreSQL AuthRepository
-func NewAuthRepository(db *sql.DB) *AuthRepository {
+func NewAuthRepository(db *gorm.DB) *AuthRepository {
 	return &AuthRepository{
 		db: db,
 	}
 }
 
-// ensureTokenTable creates the tokens table if it doesn't exist
-func (repo *AuthRepository) ensureTokenTable() error {
-	// Create tokens table if it doesn't exist
-	query := `
-	CREATE TABLE IF NOT EXISTS tokens (
-		token_id VARCHAR(255) PRIMARY KEY,
-		user_id VARCHAR(255) NOT NULL,
-		token_type VARCHAR(50) NOT NULL,
-		expiry_time TIMESTAMP NOT NULL,
-		created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-	)
-	`
-	_, err := repo.db.Exec(query)
-	return err
-}
-
 // StoreVerificationToken stores a verification token for a user
 func (repo *AuthRepository) StoreVerificationToken(userID, token string) error {
-	// Ensure the tokens table exists
-	if err := repo.ensureTokenTable(); err != nil {
-		return err
+	// Set token expiry (e.g., 24 hours from now)
+	tokenRecord := &domain.Token{
+		TokenID:   token,
+		UserID:    userID,
+		TokenType: domain.VerificationToken,
+		ExpiresAt: time.Now().Add(24 * time.Hour),
 	}
 
-	// First, delete any existing verification tokens for this user
-	deleteQuery := `DELETE FROM tokens WHERE user_id = $1 AND token_type = $2`
-	_, err := repo.db.Exec(deleteQuery, userID, VerificationToken)
-	if err != nil {
-		return err
+	// Use FirstOrCreate to handle upsert
+	result := repo.db.Where(domain.Token{TokenID: token}).
+		Attrs(tokenRecord).
+		FirstOrCreate(tokenRecord)
+
+	if result.Error != nil {
+		return result.Error
 	}
 
-	// Store the new token with an expiry of 24 hours
-	query := `INSERT INTO tokens (user_id, token_type, token, created_at, expires_at)
-	VALUES ($1, 'verification', $2, NOW(), NOW() + INTERVAL '24 hours')`
+	// Update the token if it already existed
+	if result.RowsAffected == 0 {
+		result = repo.db.Model(tokenRecord).
+			Where("token_id = ?", token).
+			Updates(map[string]interface{}{
+				"user_id":    userID,
+				"token_type": domain.VerificationToken,
+				"expires_at": time.Now().Add(24 * time.Hour),
+			})
+	}
 
-	_, err = repo.db.Exec(query, userID, token)
-	return err
+	return result.Error
 }
 
 // GetUserIDByVerificationToken retrieves the user ID associated with a verification token
 func (repo *AuthRepository) GetUserIDByVerificationToken(token string) (string, error) {
-	query := `
-	SELECT user_id, expiry_time FROM tokens 
-	WHERE token_id = $1 AND token_type = $2
-	`
-	var userID string
-	var expiryTime time.Time
-
-	err := repo.db.QueryRow(query, token, VerificationToken).Scan(&userID, &expiryTime)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return "", ErrNotFound
+	var tokenRecord domain.Token
+	
+	result := repo.db.Where("token_id = ? AND token_type = ?", token, domain.VerificationToken).First(&tokenRecord)
+	if result.Error != nil {
+		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+			return "", gorm.ErrRecordNotFound
 		}
-		return "", err
+		return "", result.Error
 	}
 
 	// Check if token has expired
-	if time.Now().After(expiryTime) {
-		return "", ErrTokenExpired
+	if time.Now().After(tokenRecord.ExpiresAt) {
+		return "", errors.New("token has expired")
 	}
 
-	return userID, nil
+	return tokenRecord.UserID, nil
 }
 
 // StoreResetToken stores a password reset token for a user
 func (repo *AuthRepository) StoreResetToken(userID, token string) error {
-	// Ensure the tokens table exists
-	if err := repo.ensureTokenTable(); err != nil {
-		return err
+	// Set token expiry (e.g., 1 hour from now)
+	tokenRecord := &domain.Token{
+		TokenID:   token,
+		UserID:    userID,
+		TokenType: domain.ResetToken,
+		ExpiresAt: time.Now().Add(1 * time.Hour),
 	}
 
-	// First, delete any existing reset tokens for this user
-	deleteQuery := `DELETE FROM tokens WHERE user_id = $1 AND token_type = $2`
-	_, err := repo.db.Exec(deleteQuery, userID, ResetToken)
-	if err != nil {
-		return err
+	// Use FirstOrCreate to handle upsert
+	result := repo.db.Where(domain.Token{TokenID: token}).
+		Attrs(tokenRecord).
+		FirstOrCreate(tokenRecord)
+
+	if result.Error != nil {
+		return result.Error
 	}
 
-	// Store the new token with an expiry of 1 hour
-	query := `INSERT INTO tokens (user_id, token_type, token, created_at, expires_at)
-	VALUES ($1, 'reset', $2, NOW(), NOW() + INTERVAL '1 hour')`
+	// Update the token if it already existed
+	if result.RowsAffected == 0 {
+		result = repo.db.Model(tokenRecord).
+			Where("token_id = ?", token).
+			Updates(map[string]interface{}{
+				"user_id":    userID,
+				"token_type": domain.ResetToken,
+				"expires_at": time.Now().Add(1 * time.Hour),
+			})
+	}
 
-	_, err = repo.db.Exec(query, userID, token)
-	return err
+	return result.Error
 }
 
 // GetUserIDByResetToken retrieves the user ID associated with a reset token
 func (repo *AuthRepository) GetUserIDByResetToken(token string) (string, error) {
-	query := `
-	SELECT user_id, expiry_time FROM tokens 
-	WHERE token_id = $1 AND token_type = $2
-	`
-	var userID string
-	var expiryTime time.Time
-
-	err := repo.db.QueryRow(query, token, ResetToken).Scan(&userID, &expiryTime)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return "", ErrNotFound
+	var tokenRecord domain.Token
+	
+	result := repo.db.Where("token_id = ? AND token_type = ?", token, domain.ResetToken).First(&tokenRecord)
+	if result.Error != nil {
+		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+			return "", gorm.ErrRecordNotFound
 		}
-		return "", err
+		return "", result.Error
 	}
 
 	// Check if token has expired
-	if time.Now().After(expiryTime) {
-		return "", ErrTokenExpired
+	if time.Now().After(tokenRecord.ExpiresAt) {
+		return "", errors.New("token has expired")
 	}
 
-	return userID, nil
+	return tokenRecord.UserID, nil
 }
