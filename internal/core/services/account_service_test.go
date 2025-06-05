@@ -4,454 +4,412 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/Businge931/sba-user-accounts/internal/adapters/secondary/validation"
 	"github.com/Businge931/sba-user-accounts/internal/core/domain"
 	cerrors "github.com/Businge931/sba-user-accounts/internal/core/errors"
 	"github.com/Businge931/sba-user-accounts/internal/core/services/mocks"
-	"github.com/Businge931/sba-user-accounts/internal/core/validation"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"golang.org/x/crypto/bcrypt"
 )
 
-func TestAccountManagementService(t *testing.T) {
-	// Common test setup
-	mockUserRepo := new(mocks.MockUserRepository)
-	mockAuthRepo := new(mocks.MockAuthRepository)
-	mockTokenSvc := new(mocks.MockTokenService)
-	mockLogger := new(mocks.MockLogger)
+type testDeps struct {
+	userRepo  *mocks.MockUserRepository
+	authRepo  *mocks.MockAuthRepository
+	tokenSvc  *mocks.MockTokenService
+	logger    *mocks.MockLogger
+	validator *validation.Validator
+}
 
-	// Setup common expectations for the logger
-	mockLogger.On("Debug", mock.Anything).Return()
-	mockLogger.On("Debugf", mock.Anything, mock.Anything).Return()
-	mockLogger.On("Info", mock.Anything).Return()
-	mockLogger.On("Infof", mock.Anything, mock.Anything).Return()
-	mockLogger.On("Warn", mock.Anything).Return()
-	mockLogger.On("Warnf", mock.Anything, mock.Anything).Return()
-	mockLogger.On("Error", mock.Anything).Return()
-	mockLogger.On("Errorf", mock.Anything, mock.Anything).Return()
+func setUpTestDeps() *testDeps {
+	return &testDeps{
+		userRepo:  new(mocks.MockUserRepository),
+		authRepo:  new(mocks.MockAuthRepository),
+		tokenSvc:  new(mocks.MockTokenService),
+		logger:    new(mocks.MockLogger),
+		validator: validation.NewValidator(),
+	}
+}
 
-	validator := validation.NewValidator()
+func setupLoggerExpectations(logger *mocks.MockLogger) {
+	logger.On("Debug", mock.Anything).Return()
+	logger.On("Debugf", mock.Anything, mock.Anything).Return()
+	logger.On("Info", mock.Anything).Return()
+	logger.On("Infof", mock.Anything, mock.Anything).Return()
+	logger.On("Warn", mock.Anything).Return()
+	logger.On("Warnf", mock.Anything, mock.Anything).Return()
+	logger.On("Error", mock.Anything).Return()
+	logger.On("Errorf", mock.Anything, mock.Anything).Return()
+}
 
-	accountService := NewAccountManagementService(
-		mockUserRepo,
-		mockAuthRepo,
-		mockTokenSvc,
-		nil, // No email service for tests
-		validator,
-		mockLogger,
-	)
+func newTestAccountService(deps *testDeps) *accountManagementService {
+	return &accountManagementService{
+		userRepo:  deps.userRepo,
+		authRepo:  deps.authRepo,
+		tokenSvc:  deps.tokenSvc,
+		emailSvc:  nil, // No email service for tests
+		validator: deps.validator,
+		logger:    deps.logger,
+	}
+}
 
-	verifyEmailTests := []struct {
+func TestAccountService_verifyEmail(t *testing.T) {
+	// Define test dependencies
+	type dependencies struct {
+		userRepo *mocks.MockUserRepository
+		authRepo *mocks.MockAuthRepository
+		tokenSvc *mocks.MockTokenService
+	}
+
+	// Define test arguments
+	type args struct {
+		token string
+	}
+
+	tests := []struct {
 		name     string
-		deps     struct {
-			userRepo   *mocks.MockUserRepository
-			authRepo   *mocks.MockAuthRepository
-			tokenSvc   *mocks.MockTokenService
-		}
-		args     struct {
-			token string
-		}
-		before   func()
-		expected struct {
-			error   bool
-			errType cerrors.ErrorType
-		}
+		deps     dependencies
+		args     args
+		before   func(deps *testDeps)
+		after    func(t *testing.T, deps *testDeps)
+		wantErr  bool
+		errorType cerrors.ErrorType
 	}{
 		{
 			name: "VerifyEmail_Success",
-			deps: struct {
-				userRepo   *mocks.MockUserRepository
-				authRepo   *mocks.MockAuthRepository
-				tokenSvc   *mocks.MockTokenService
-			}{
-				userRepo:   mockUserRepo,
-				authRepo:   mockAuthRepo,
-				tokenSvc:   mockTokenSvc,
+			deps: dependencies{
+				userRepo: new(mocks.MockUserRepository),
+				authRepo: new(mocks.MockAuthRepository),
+				tokenSvc: new(mocks.MockTokenService),
 			},
-			args: struct {
-				token string
-			}{
+			args: args{
 				token: "valid-verification-token",
 			},
-			before: func() {
-				// Reset mocks
-				mockUserRepo.ExpectedCalls = nil
-				mockAuthRepo.ExpectedCalls = nil
-				mockTokenSvc.ExpectedCalls = nil
-
+			before: func(deps *testDeps) {
 				userID := "user-id-123"
-				// Setup expectations
-				mockAuthRepo.On("GetUserIDByVerificationToken", "valid-verification-token").Return(userID, nil)
-
-				user := &domain.User{
+				deps.authRepo.On("GetUserIDByVerificationToken", "valid-verification-token").Return(userID, nil)
+				deps.userRepo.On("GetByID", userID).Return(&domain.User{
 					ID:              userID,
 					Email:           "test@example.com",
 					IsEmailVerified: false,
-				}
-				mockUserRepo.On("GetByID", userID).Return(user, nil)
-				mockUserRepo.On("Update", mock.MatchedBy(func(u *domain.User) bool {
+				}, nil)
+				deps.userRepo.On("Update", mock.MatchedBy(func(u *domain.User) bool {
 					return u.ID == userID && u.IsEmailVerified == true
 				})).Return(nil)
 			},
-			expected: struct {
-				error   bool
-				errType cerrors.ErrorType
-			}{
-				error:   false,
-				errType: "",
+			after: func(t *testing.T, deps *testDeps) {
+				deps.userRepo.AssertExpectations(t)
+				deps.authRepo.AssertExpectations(t)
+				deps.tokenSvc.AssertExpectations(t)
 			},
+			wantErr: false,
 		},
 		{
 			name: "VerifyEmail_InvalidToken",
-			deps: struct {
-				userRepo   *mocks.MockUserRepository
-				authRepo   *mocks.MockAuthRepository
-				tokenSvc   *mocks.MockTokenService
-			}{
-				userRepo:   mockUserRepo,
-				authRepo:   mockAuthRepo,
-				tokenSvc:   mockTokenSvc,
+			deps: dependencies{
+				authRepo: new(mocks.MockAuthRepository),
 			},
-			args: struct {
-				token string
-			}{
+			args: args{
 				token: "invalid-verification-token",
 			},
-			before: func() {
-				// Reset mocks
-				mockUserRepo.ExpectedCalls = nil
-				mockAuthRepo.ExpectedCalls = nil
-				mockTokenSvc.ExpectedCalls = nil
-
-				// Setup expectations
-				mockAuthRepo.On("GetUserIDByVerificationToken", "invalid-verification-token").Return("", errors.New("token not found"))
+			before: func(deps *testDeps) {
+				deps.authRepo.On("GetUserIDByVerificationToken", "invalid-verification-token").
+					Return("", errors.New("token not found"))
 			},
-			expected: struct {
-				error   bool
-				errType cerrors.ErrorType
-			}{
-				error:   true,
-				errType: cerrors.ErrorTypeInvalidInput,
+			after: func(t *testing.T, deps *testDeps) {
+				deps.authRepo.AssertExpectations(t)
 			},
+			wantErr: true,
+			errorType: cerrors.ErrorTypeInvalidInput,
 		},
 	}
 
-	// Run all VerifyEmail tests
-	for _, tc := range verifyEmailTests {
-		t.Run(tc.name, func(t *testing.T) {
-			// Setup mocks for this test case
-			tc.before()
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Setup test dependencies
+			deps := setUpTestDeps()
+			setupLoggerExpectations(deps.logger)
 
-			// Execute the test
-			err := accountService.VerifyEmail(tc.args.token)
+			// Run before function to set up mocks
+			if tt.before != nil {
+				tt.before(deps)
+			}
 
-			// Check error expectation
-			if tc.expected.error {
+			// Create service with test dependencies
+			service := newTestAccountService(deps)
+
+			// Execute
+			err := service.VerifyEmail(tt.args.token)
+
+			// Assert
+			if tt.wantErr {
 				assert.Error(t, err)
-				if tc.expected.errType != "" {
+				if tt.errorType != "" {
 					domainErr, ok := err.(*cerrors.DomainError)
 					assert.True(t, ok)
-					assert.Equal(t, tc.expected.errType, domainErr.Type)
+					assert.Equal(t, tt.errorType, domainErr.Type)
 				}
 			} else {
 				assert.NoError(t, err)
 			}
 
-			// Verify the mocks were called appropriately
-			tc.deps.authRepo.AssertExpectations(t)
-			tc.deps.userRepo.AssertExpectations(t)
+			// Verify all expectations were met
+			deps.userRepo.AssertExpectations(t)
+			deps.authRepo.AssertExpectations(t)
+			deps.tokenSvc.AssertExpectations(t)
 		})
 	}
+}
 
-	// Define table-driven tests for RequestPasswordReset function
-	requestPasswordResetTests := []struct {
+func TestAccountService_RequestPasswordReset(t *testing.T) {
+	// Define test dependencies
+	type dependencies struct {
+		userRepo *mocks.MockUserRepository
+		authRepo *mocks.MockAuthRepository
+		tokenSvc *mocks.MockTokenService
+	}
+
+	// Define test arguments
+	type args struct {
+		email string
+	}
+
+	tests := []struct {
 		name     string
-		deps     struct {
-			userRepo   *mocks.MockUserRepository
-			authRepo   *mocks.MockAuthRepository
-			tokenSvc   *mocks.MockTokenService
-		}
-		args     struct {
-			email string
-		}
-		before   func()
-		expected struct {
-			error   bool
-			errType cerrors.ErrorType
-		}
+		deps     dependencies
+		args     args
+		before   func(deps *testDeps)
+		after    func(t *testing.T, deps *testDeps)
+		wantErr  bool
+		errorType cerrors.ErrorType
 	}{
 		{
 			name: "RequestPasswordReset_Success",
-			deps: struct {
-				userRepo   *mocks.MockUserRepository
-				authRepo   *mocks.MockAuthRepository
-				tokenSvc   *mocks.MockTokenService
-			}{
-				userRepo:   mockUserRepo,
-				authRepo:   mockAuthRepo,
-				tokenSvc:   mockTokenSvc,
+			deps: dependencies{
+				userRepo: new(mocks.MockUserRepository),
+				authRepo: new(mocks.MockAuthRepository),
+				tokenSvc: new(mocks.MockTokenService),
 			},
-			args: struct {
-				email string
-			}{
+			args: args{
 				email: "test@example.com",
 			},
-			before: func() {
-				// Reset mocks
-				mockUserRepo.ExpectedCalls = nil
-				mockAuthRepo.ExpectedCalls = nil
-				mockTokenSvc.ExpectedCalls = nil
-
+			before: func(deps *testDeps) {
 				userID := "user-id-123"
-				// Setup expectations
 				user := &domain.User{
 					ID:    userID,
 					Email: "test@example.com",
 				}
-				mockUserRepo.On("GetByEmail", "test@example.com").Return(user, nil)
-				mockTokenSvc.On("GenerateResetToken").Return("reset-token-123")
-				mockAuthRepo.On("StoreResetToken", userID, "reset-token-123").Return(nil)
+				deps.userRepo.On("GetByEmail", "test@example.com").Return(user, nil)
+				deps.tokenSvc.On("GenerateResetToken").Return("reset-token-123")
+				deps.authRepo.On("StoreResetToken", userID, "reset-token-123").Return(nil)
 			},
-			expected: struct {
-				error   bool
-				errType cerrors.ErrorType
-			}{
-				error:   false,
-				errType: "",
+			after: func(t *testing.T, deps *testDeps) {
+				deps.userRepo.AssertExpectations(t)
+				deps.tokenSvc.AssertExpectations(t)
+				deps.authRepo.AssertExpectations(t)
 			},
+			wantErr: false,
 		},
 		{
 			name: "RequestPasswordReset_UserNotFound",
-			deps: struct {
-				userRepo   *mocks.MockUserRepository
-				authRepo   *mocks.MockAuthRepository
-				tokenSvc   *mocks.MockTokenService
-			}{
-				userRepo:   mockUserRepo,
-				authRepo:   mockAuthRepo,
-				tokenSvc:   mockTokenSvc,
+			deps: dependencies{
+				userRepo: new(mocks.MockUserRepository),
 			},
-			args: struct {
-				email string
-			}{
+			args: args{
 				email: "nonexistent@example.com",
 			},
-			before: func() {
-				// Reset mocks
-				mockUserRepo.ExpectedCalls = nil
-				mockAuthRepo.ExpectedCalls = nil
-				mockTokenSvc.ExpectedCalls = nil
-
-				// Setup expectations
-				mockUserRepo.On("GetByEmail", "nonexistent@example.com").Return(nil, errors.New("user not found"))
+			before: func(deps *testDeps) {
+				deps.userRepo.On("GetByEmail", "nonexistent@example.com").Return(nil, errors.New("user not found"))
 			},
-			expected: struct {
-				error   bool
-				errType cerrors.ErrorType
-			}{
-				error:   false, // This operation doesn't return an error for security reasons
-				errType: "",
+			after: func(t *testing.T, deps *testDeps) {
+				deps.userRepo.AssertExpectations(t)
 			},
+			wantErr: false, // This operation doesn't return an error for security reasons
 		},
 	}
 
-	// Run all RequestPasswordReset tests
-	for _, tc := range requestPasswordResetTests {
-		t.Run(tc.name, func(t *testing.T) {
-			// Setup mocks for this test case
-			tc.before()
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Setup test dependencies
+			deps := setUpTestDeps()
+			setupLoggerExpectations(deps.logger)
 
-			// Execute the test
-			err := accountService.RequestPasswordReset(tc.args.email)
+			// Run before function to set up mocks
+			if tt.before != nil {
+				tt.before(deps)
+			}
 
-			// Check error expectation
-			if tc.expected.error {
+			// Create service with test dependencies
+			service := newTestAccountService(deps)
+
+			// Execute
+			err := service.RequestPasswordReset(tt.args.email)
+
+			// Assert
+			if tt.wantErr {
 				assert.Error(t, err)
-				if tc.expected.errType != "" {
+				if tt.errorType != "" {
 					domainErr, ok := err.(*cerrors.DomainError)
 					assert.True(t, ok)
-					assert.Equal(t, tc.expected.errType, domainErr.Type)
+					assert.Equal(t, tt.errorType, domainErr.Type)
 				}
 			} else {
 				assert.NoError(t, err)
 			}
 
-			// Verify the mocks were called appropriately
-			tc.deps.userRepo.AssertExpectations(t)
-			
-			// Check other mocks based on test case
-			if tc.name == "RequestPasswordReset_Success" {
-				tc.deps.tokenSvc.AssertExpectations(t)
-				tc.deps.authRepo.AssertExpectations(t)
+			// Run after function for cleanup/verification
+			if tt.after != nil {
+				tt.after(t, deps)
 			}
 		})
 	}
+}
 
-	// Define table-driven tests for ResetPassword function
-	resetPasswordTests := []struct {
+func TestAccountService_ResetPassword(t *testing.T) {
+	// Define test dependencies
+	type dependencies struct {
+		userRepo *mocks.MockUserRepository
+		authRepo *mocks.MockAuthRepository
+		tokenSvc *mocks.MockTokenService
+	}
+
+	// Define test arguments
+	type args struct {
+		token      string
+		newPassword string
+	}
+
+	tests := []struct {
 		name     string
-		deps     struct {
-			userRepo   *mocks.MockUserRepository
-			authRepo   *mocks.MockAuthRepository
-		}
-		args     struct {
-			token       string
-			newPassword string
-		}
-		before   func()
-		expected struct {
-			error   bool
-			errType cerrors.ErrorType
-		}
+		deps     dependencies
+		args     args
+		before   func(deps *testDeps)
+		after    func(t *testing.T, deps *testDeps)
+		wantErr  bool
+		errorType cerrors.ErrorType
 	}{
 		{
 			name: "ResetPassword_Success",
-			deps: struct {
-				userRepo   *mocks.MockUserRepository
-				authRepo   *mocks.MockAuthRepository
-			}{
-				userRepo: mockUserRepo,
-				authRepo: mockAuthRepo,
+			deps: dependencies{
+				userRepo: new(mocks.MockUserRepository),
+				authRepo: new(mocks.MockAuthRepository),
+				tokenSvc: new(mocks.MockTokenService),
 			},
-			args: struct {
-				token       string
-				newPassword string
-			}{
-				token:       "valid-reset-token",
+			args: args{
+				token:      "valid-reset-token",
 				newPassword: "NewPassword123!",
 			},
-			before: func() {
-				// Reset mocks
-				mockUserRepo.ExpectedCalls = nil
-				mockAuthRepo.ExpectedCalls = nil
-				mockTokenSvc.ExpectedCalls = nil
-
+			before: func(deps *testDeps) {
 				userID := "user-id-123"
-				// Setup expectations
-				mockAuthRepo.On("GetUserIDByResetToken", "valid-reset-token").Return(userID, nil)
-				
-				user := &domain.User{
-					ID:    userID,
-					Email: "test@example.com",
-				}
-				mockUserRepo.On("GetByID", userID).Return(user, nil)
-				mockUserRepo.On("Update", mock.MatchedBy(func(u *domain.User) bool {
-					// Check that the password was updated
-					return u.ID == userID && u.HashedPassword != ""
-				})).Return(nil)
-				mockAuthRepo.On("DeleteResetToken", userID).Return(nil)
+				deps.authRepo.On("GetUserIDByResetToken", "valid-reset-token").Return(userID, nil)
+				deps.userRepo.On("GetByID", userID).Return(&domain.User{
+					ID:             userID,
+					Email:          "test@example.com",
+					HashedPassword: "old-hashed-password",
+				}, nil)
+				deps.userRepo.On("Update", mock.AnythingOfType("*domain.User")).Run(func(args mock.Arguments) {
+					user := args.Get(0).(*domain.User)
+					// Verify the password was hashed
+					err := bcrypt.CompareHashAndPassword([]byte(user.HashedPassword), []byte("NewPassword123!"))
+					assert.NoError(t, err, "password should be hashed")
+				}).Return(nil)
 			},
-			expected: struct {
-				error   bool
-				errType cerrors.ErrorType
-			}{
-				error:   false,
-				errType: "",
+			after: func(t *testing.T, deps *testDeps) {
+				deps.authRepo.AssertExpectations(t)
+				deps.userRepo.AssertExpectations(t)
 			},
+			wantErr: false,
 		},
 		{
 			name: "ResetPassword_InvalidToken",
-			deps: struct {
-				userRepo   *mocks.MockUserRepository
-				authRepo   *mocks.MockAuthRepository
-			}{
-				userRepo: mockUserRepo,
-				authRepo: mockAuthRepo,
+			deps: dependencies{
+				authRepo: new(mocks.MockAuthRepository),
 			},
-			args: struct {
-				token       string
-				newPassword string
-			}{
-				token:       "invalid-reset-token",
+			args: args{
+				token:      "invalid-reset-token",
 				newPassword: "NewPassword123!",
 			},
-			before: func() {
-				// Reset mocks
-				mockUserRepo.ExpectedCalls = nil
-				mockAuthRepo.ExpectedCalls = nil
-				mockTokenSvc.ExpectedCalls = nil
-
-				// Setup expectations
-				mockAuthRepo.On("GetUserIDByResetToken", "invalid-reset-token").Return("", errors.New("token not found"))
+			before: func(deps *testDeps) {
+				deps.authRepo.On("GetUserIDByResetToken", "invalid-reset-token").Return("", errors.New("token not found"))
 			},
-			expected: struct {
-				error   bool
-				errType cerrors.ErrorType
-			}{
-				error:   true,
-				errType: cerrors.ErrorTypeInvalidInput,
+			after: func(t *testing.T, deps *testDeps) {
+				deps.authRepo.AssertExpectations(t)
 			},
+			wantErr:   true,
+			errorType: cerrors.ErrorTypeInvalidInput,
 		},
 	}
 
-	// Run all ResetPassword tests
-	for _, tc := range resetPasswordTests {
-		t.Run(tc.name, func(t *testing.T) {
-			// Setup mocks for this test case
-			tc.before()
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Setup test dependencies
+			deps := setUpTestDeps()
+			setupLoggerExpectations(deps.logger)
 
-			// Execute the test
-			err := accountService.ResetPassword(tc.args.token, tc.args.newPassword)
+			// Run before function to set up mocks
+			if tt.before != nil {
+				tt.before(deps)
+			}
 
-			// Check error expectation
-			if tc.expected.error {
+			// Create service with test dependencies
+			service := newTestAccountService(deps)
+
+			// Execute
+			err := service.ResetPassword(tt.args.token, tt.args.newPassword)
+
+			// Assert
+			if tt.wantErr {
 				assert.Error(t, err)
-				if tc.expected.errType != "" {
+				if tt.errorType != "" {
 					domainErr, ok := err.(*cerrors.DomainError)
 					assert.True(t, ok)
-					assert.Equal(t, tc.expected.errType, domainErr.Type)
+					assert.Equal(t, tt.errorType, domainErr.Type)
 				}
 			} else {
 				assert.NoError(t, err)
 			}
 
-			// Verify the mocks were called appropriately
-			tc.deps.authRepo.AssertExpectations(t)
-			if !tc.expected.error {
-				tc.deps.userRepo.AssertExpectations(t)
+			// Run after function for cleanup/verification
+			if tt.after != nil {
+				tt.after(t, deps)
 			}
 		})
 	}
+}
 
-	// Define table-driven tests for ChangePassword function
-	changePasswordTests := []struct {
+func TestAccountService_ChangePassword(t *testing.T) {
+	// Define test dependencies
+	type dependencies struct {
+		userRepo *mocks.MockUserRepository
+	}
+
+	// Define test arguments
+	type args struct {
+		userID      string
+		oldPassword string
+		newPassword string
+	}
+
+	tests := []struct {
 		name     string
-		deps     struct {
-			userRepo   *mocks.MockUserRepository
-		}
-		args     struct {
-			userID      string
-			oldPassword string
-			newPassword string
-		}
-		before   func()
-		expected struct {
-			error   bool
-			errType cerrors.ErrorType
-		}
+		deps     dependencies
+		args     args
+		before   func(deps *testDeps)
+		after    func(t *testing.T, deps *testDeps)
+		wantErr  bool
+		errorType cerrors.ErrorType
 	}{
 		{
 			name: "ChangePassword_Success",
-			deps: struct {
-				userRepo   *mocks.MockUserRepository
-			}{
-				userRepo: mockUserRepo,
+			deps: dependencies{
+				userRepo: new(mocks.MockUserRepository),
 			},
-			args: struct {
-				userID      string
-				oldPassword string
-				newPassword string
-			}{
+			args: args{
 				userID:      "user-id-123",
 				oldPassword: "OldPassword123!",
 				newPassword: "NewPassword123!",
 			},
-			before: func() {
-				// Reset mocks
-				mockUserRepo.ExpectedCalls = nil
-				mockAuthRepo.ExpectedCalls = nil
-				mockTokenSvc.ExpectedCalls = nil
-
+			before: func(deps *testDeps) {
 				userID := "user-id-123"
 				oldPassword := "OldPassword123!"
 				// Generate a proper bcrypt hash with MinCost for test speed
@@ -463,42 +421,29 @@ func TestAccountManagementService(t *testing.T) {
 					Email:          "test@example.com",
 					HashedPassword: string(hashedOldPassword),
 				}
-				mockUserRepo.On("GetByID", userID).Return(user, nil)
-				mockUserRepo.On("Update", mock.MatchedBy(func(u *domain.User) bool {
+				deps.userRepo.On("GetByID", userID).Return(user, nil)
+				deps.userRepo.On("Update", mock.MatchedBy(func(u *domain.User) bool {
 					// Check that the password was updated
 					return u.ID == userID && u.HashedPassword != string(hashedOldPassword)
 				})).Return(nil)
 			},
-			expected: struct {
-				error   bool
-				errType cerrors.ErrorType
-			}{
-				error:   false,
-				errType: "",
+			after: func(t *testing.T, deps *testDeps) {
+				// Verify all expectations were met
+				deps.userRepo.AssertExpectations(t)
 			},
+			wantErr: false,
 		},
 		{
 			name: "ChangePassword_WrongOldPassword",
-			deps: struct {
-				userRepo   *mocks.MockUserRepository
-			}{
-				userRepo: mockUserRepo,
+			deps: dependencies{
+				userRepo: new(mocks.MockUserRepository),
 			},
-			args: struct {
-				userID      string
-				oldPassword string
-				newPassword string
-			}{
+			args: args{
 				userID:      "user-id-123",
 				oldPassword: "WrongOldPassword123!",
 				newPassword: "NewPassword123!",
 			},
-			before: func() {
-				// Reset mocks
-				mockUserRepo.ExpectedCalls = nil
-				mockAuthRepo.ExpectedCalls = nil
-				mockTokenSvc.ExpectedCalls = nil
-
+			before: func(deps *testDeps) {
 				userID := "user-id-123"
 				correctOldPassword := "OldPassword123!"
 				hashedOldPassword, _ := bcrypt.GenerateFromPassword([]byte(correctOldPassword), bcrypt.DefaultCost)
@@ -509,74 +454,68 @@ func TestAccountManagementService(t *testing.T) {
 					Email:          "test@example.com",
 					HashedPassword: string(hashedOldPassword),
 				}
-				mockUserRepo.On("GetByID", userID).Return(user, nil)
+				deps.userRepo.On("GetByID", userID).Return(user, nil)
 			},
-			expected: struct {
-				error   bool
-				errType cerrors.ErrorType
-			}{
-				error:   true,
-				errType: cerrors.ErrorTypeInvalidAuth,
+			after: func(t *testing.T, deps *testDeps) {
+				deps.userRepo.AssertExpectations(t)
 			},
+			wantErr:   true,
+			errorType: cerrors.ErrorTypeInvalidAuth,
 		},
 		{
 			name: "ChangePassword_UserNotFound",
-			deps: struct {
-				userRepo   *mocks.MockUserRepository
-			}{
-				userRepo: mockUserRepo,
+			deps: dependencies{
+				userRepo: new(mocks.MockUserRepository),
 			},
-			args: struct {
-				userID      string
-				oldPassword string
-				newPassword string
-			}{
+			args: args{
 				userID:      "nonexistent-user-id",
 				oldPassword: "OldPassword123!",
 				newPassword: "NewPassword123!",
 			},
-			before: func() {
-				// Reset mocks
-				mockUserRepo.ExpectedCalls = nil
-				mockAuthRepo.ExpectedCalls = nil
-				mockTokenSvc.ExpectedCalls = nil
-
-				// Setup expectations
-				mockUserRepo.On("GetByID", "nonexistent-user-id").Return(nil, errors.New("user not found"))
+			before: func(deps *testDeps) {
+				deps.userRepo.On("GetByID", "nonexistent-user-id").Return(nil, errors.New("user not found"))
 			},
-			expected: struct {
-				error   bool
-				errType cerrors.ErrorType
-			}{
-				error:   true,
-				errType: cerrors.ErrorTypeNotFound,
+			after: func(t *testing.T, deps *testDeps) {
+				deps.userRepo.AssertExpectations(t)
 			},
+			wantErr:   true,
+			errorType: cerrors.ErrorTypeNotFound,
 		},
 	}
 
-	// Run all ChangePassword tests
-	for _, tc := range changePasswordTests {
-		t.Run(tc.name, func(t *testing.T) {
-			// Setup mocks for this test case
-			tc.before()
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Setup test dependencies
+			deps := setUpTestDeps()
+			setupLoggerExpectations(deps.logger)
 
-			// Execute the test
-			err := accountService.ChangePassword(tc.args.userID, tc.args.oldPassword, tc.args.newPassword)
+			// Run before function to set up mocks
+			if tt.before != nil {
+				tt.before(deps)
+			}
 
-			// Check error expectation
-			if tc.expected.error {
+			// Create service with test dependencies
+			service := newTestAccountService(deps)
+
+			// Execute
+			err := service.ChangePassword(tt.args.userID, tt.args.oldPassword, tt.args.newPassword)
+
+			// Assert
+			if tt.wantErr {
 				assert.Error(t, err)
-				if tc.expected.errType != "" {
+				if tt.errorType != "" {
 					domainErr, ok := err.(*cerrors.DomainError)
 					assert.True(t, ok)
-					assert.Equal(t, tc.expected.errType, domainErr.Type)
+					assert.Equal(t, tt.errorType, domainErr.Type)
 				}
 			} else {
 				assert.NoError(t, err)
 			}
 
-			// Verify the mocks were called appropriately
-			tc.deps.userRepo.AssertExpectations(t)
+			// Run after function for cleanup/verification
+			if tt.after != nil {
+				tt.after(t, deps)
+			}
 		})
 	}
 }

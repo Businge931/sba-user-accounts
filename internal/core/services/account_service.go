@@ -5,7 +5,6 @@ import (
 
 	"github.com/Businge931/sba-user-accounts/internal/core/errors"
 	"github.com/Businge931/sba-user-accounts/internal/core/ports"
-	"github.com/Businge931/sba-user-accounts/internal/core/validation"
 )
 
 // accountManagementService implements the AccountManagementService interface
@@ -14,7 +13,7 @@ type accountManagementService struct {
 	authRepo  ports.AuthRepository
 	tokenSvc  ports.TokenService
 	emailSvc  ports.EmailService
-	validator *validation.Validator
+	validator ports.ValidationService
 	logger    ports.Logger
 }
 
@@ -24,7 +23,7 @@ func NewAccountManagementService(
 	authRepo ports.AuthRepository,
 	tokenSvc ports.TokenService,
 	emailSvc ports.EmailService,
-	validator *validation.Validator,
+	validator ports.ValidationService,
 	logger ports.Logger,
 ) ports.AccountManagementService {
 	return &accountManagementService{
@@ -147,3 +146,47 @@ func (svc *accountManagementService) ChangePassword(userID, oldPassword, newPass
 	user.HashedPassword = string(hashedPassword)
 	return svc.userRepo.Update(user)
 }
+
+// **************************************************
+
+// type TestDependencies struct {
+// 	UserRepo     ports.UserRepository
+// 	AuthRepo     ports.AuthRepository
+// 	TokenSvc     ports.TokenService
+// 	Logger       ports.Logger
+// 	Validator    *validation.Validator
+// 	mockUserRepo *mocks.MockUserRepository
+// 	mockAuthRepo *mocks.MockAuthRepository
+// 	mockTokenSvc *mocks.MockTokenService
+// }
+
+// // NewTestDependencies creates a new TestDependencies with all mocks initialized
+// func NewTestDependencies(t *testing.T) *TestDependencies {
+// 	// Create mock repositories and services
+// 	mockUserRepo := &mocks.MockUserRepository{
+// 		Mock: mock.Mock{},
+// 	}
+// 	mockAuthRepo := &mocks.MockAuthRepository{
+// 		Mock: mock.Mock{},
+// 	}
+// 	mockTokenSvc := &mocks.MockTokenService{
+// 		Mock: mock.Mock{},
+// 	}
+
+// 	// Setup mock logger
+// 	mockLogger := &mocks.MockLogger{
+// 		Mock: mock.Mock{},
+// 	}
+// 	mockLogger.On("With", mock.Anything).Return(mockLogger)
+
+// 	return &TestDependencies{
+// 		UserRepo:     mockUserRepo,
+// 		AuthRepo:     mockAuthRepo,
+// 		TokenSvc:     mockTokenSvc,
+// 		Logger:       mockLogger,
+// 		Validator:    validation.NewValidator(),
+// 		mockUserRepo: mockUserRepo,
+// 		mockAuthRepo: mockAuthRepo,
+// 		mockTokenSvc: mockTokenSvc,
+// 	}
+// }
