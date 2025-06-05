@@ -57,8 +57,8 @@ type MockAuthService struct {
 }
 
 // Register mocks the Register method
-func (m *MockAuthService) Register(email, password, firstName, lastName string) (*domain.User, error) {
-	args := m.Called(email, password, firstName, lastName)
+func (m *MockAuthService) Register(req domain.RegisterRequest) (*domain.User, error) {
+	args := m.Called(req)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
@@ -66,8 +66,8 @@ func (m *MockAuthService) Register(email, password, firstName, lastName string) 
 }
 
 // Login mocks the Login method
-func (m *MockAuthService) Login(email, password string) (string, error) {
-	args := m.Called(email, password)
+func (m *MockAuthService) Login(req domain.LoginRequest) (string, error) {
+	args := m.Called(req)
 	return args.String(0), args.Error(1)
 }
 
