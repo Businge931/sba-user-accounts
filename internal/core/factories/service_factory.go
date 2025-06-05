@@ -1,31 +1,32 @@
 package factories
 
 import (
-	"database/sql"
+	"gorm.io/gorm"
 
 	"github.com/Businge931/sba-user-accounts/internal/adapters/secondary/email"
 	"github.com/Businge931/sba-user-accounts/internal/adapters/secondary/logging"
 	"github.com/Businge931/sba-user-accounts/internal/adapters/secondary/postgres"
+	"github.com/Businge931/sba-user-accounts/internal/adapters/secondary/token"
+	"github.com/Businge931/sba-user-accounts/internal/adapters/secondary/validation"
 	"github.com/Businge931/sba-user-accounts/internal/config"
+	"github.com/Businge931/sba-user-accounts/internal/core/domain"
 	"github.com/Businge931/sba-user-accounts/internal/core/ports"
 	"github.com/Businge931/sba-user-accounts/internal/core/services"
-	"github.com/Businge931/sba-user-accounts/internal/core/validation"
 )
 
 // ServiceFactory creates and initializes all application services
 type ServiceFactory struct {
-	db        *sql.DB
+	db        *gorm.DB
 	config    *config.Config
 	logger    ports.Logger
-	validator *validation.Validator
+	validator ports.ValidationService
 	userRepo  ports.UserRepository
 	authRepo  ports.AuthRepository
 	tokenSvc  ports.TokenService
 	emailSvc  ports.EmailService
 }
 
-// NewServiceFactory creates a new service factory
-func NewServiceFactory(db *sql.DB, config *config.Config) *ServiceFactory {
+func NewServiceFactory(db *gorm.DB, config *config.Config) *ServiceFactory {
 	logger := logging.NewLogrusAdapter()
 	validator := validation.NewValidator()
 
@@ -37,19 +38,26 @@ func NewServiceFactory(db *sql.DB, config *config.Config) *ServiceFactory {
 	}
 }
 
-// InitializeRepositories initializes all repositories
-func (f *ServiceFactory) InitializeRepositories() {
-	f.userRepo = postgres.NewUserRepository(f.db)
-	f.authRepo = postgres.NewAuthRepository(f.db)
+// AutoMigrate runs database migrations
+func (f *ServiceFactory) AutoMigrate() error {
+	return f.db.AutoMigrate(
+		&domain.User{},
+		&domain.Token{},
+		// Add other models here
+	)
 }
 
-// InitializeServices initializes all services
+func (f *ServiceFactory) InitializeRepositories() {
+	f.userRepo = postgres.NewUserRepository(f.db)
+	f.authRepo = postgres.NewAuthRepository(f.db) 
+}
+
 func (f *ServiceFactory) InitializeServices() {
 	// First initialize supporting services
-	f.tokenSvc = services.NewJWTTokenService(f.config.Auth.JWTSecret, f.config.Auth.TokenExpiryMin)
+	f.tokenSvc = token.NewJWTTokenService(f.config.Auth.JWTSecret, f.config.Auth.TokenExpiryMin)
 
 	// Create a simple email service implementation
-	appBaseURL := "http://localhost:" + f.config.Server.GRPCPort // This would come from config in a real app
+	appBaseURL := "http://localhost:" + f.config.Server.GRPCPort 
 	f.emailSvc = email.NewLoggingEmailService(appBaseURL)
 }
 
