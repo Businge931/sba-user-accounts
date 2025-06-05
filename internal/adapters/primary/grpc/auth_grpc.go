@@ -2,10 +2,13 @@ package grpc
 
 import (
 	"context"
+	"errors"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/Businge931/sba-user-accounts/internal/core/domain"
+	dcerrors "github.com/Businge931/sba-user-accounts/internal/core/errors"
 	"github.com/Businge931/sba-user-accounts/internal/core/ports"
 	"github.com/Businge931/sba-user-accounts/proto"
 )
@@ -21,54 +24,68 @@ type AuthServer struct {
 // Register handles user registration requests from the API gateway
 func (server *AuthServer) Register(_ context.Context, req *proto.RegisterRequest) (*proto.RegisterResponse, error) {
 	// Validate request
-	if req.GetUsername() == "" || req.GetPassword() == "" {
-		return nil, status.Error(codes.InvalidArgument, "missing required fields")
+	if req.GetEmail() == "" || req.GetPassword() == "" || req.GetFirstName() == "" || req.GetLastName() == "" {
+		return nil, status.Error(codes.InvalidArgument, "missing required fields: email, password, first_name, and last_name are required")
 	}
 
-	// Call the core auth service to handle registration logic
-	// Extract first and last name from username if possible, or use username for both
-	firstName := req.GetUsername()
-	lastName := ""
+	// Create register request with all required fields
+	registerReq := domain.RegisterRequest{
+		Email:     req.GetEmail(),
+		Password:  req.GetPassword(),
+		FirstName: req.GetFirstName(),
+		LastName:  req.GetLastName(),
+	}
 
-	// Call the service with parameters matching the actual interface
-	_, err := server.AuthService.Register(req.GetUsername(), req.GetPassword(), firstName, lastName)
+	// Call the service with the request struct
+	_, err := server.AuthService.Register(registerReq)
 	if err != nil {
-		return nil, status.Error(codes.Internal, err.Error())
+		server.Logger.Errorf("Registration failed: %v", err)
+		
+		// Handle specific error types
+		if errors.Is(err, dcerrors.ErrAlreadyExists) {
+			return nil, status.Error(codes.AlreadyExists, "User already exists")
+		}
+		if errors.Is(err, dcerrors.ErrInvalidInput) {
+			return nil, status.Error(codes.InvalidArgument, "Invalid input provided")
+		}
+		return nil, status.Error(codes.Internal, "Failed to register user")
 	}
 
 	return &proto.RegisterResponse{
 		Success: true,
-		Message: "User registered successfully",
+		Message: "User registered successfully. Please check your email to verify your account.",
 	}, nil
 }
 
 // Login handles user login requests from the API gateway
 func (server *AuthServer) Login(_ context.Context, req *proto.LoginRequest) (*proto.LoginResponse, error) {
 	// Validate request
-	if req.GetUsername() == "" || req.GetPassword() == "" {
-		return nil, status.Error(codes.InvalidArgument, "Missing username or password")
+	if req.GetEmail() == "" || req.GetPassword() == "" {
+		return nil, status.Error(codes.InvalidArgument, "Missing email or password")
+	}
+
+	// Create login request
+	loginReq := domain.LoginRequest{
+		Email:    req.GetEmail(),
+		Password: req.GetPassword(),
 	}
 
 	// Call the core auth service to handle login logic
-	// Use username as email for login
-	token, err := server.AuthService.Login(req.GetUsername(), req.GetPassword())
+	token, err := server.AuthService.Login(loginReq)
 	if err != nil {
-		// Handle different error types based on the error message
-		errMsg := err.Error()
-		server.Logger.Infof("Login error for user %s: %s", req.GetUsername(), errMsg)
+		server.Logger.Infof("Login error for user %s: %v", req.GetEmail(), err)
 
-		// Map error messages to appropriate gRPC status codes and user-friendly messages
-		switch errMsg {
-		case "USER_NOT_FOUND":
+		// Map domain errors to appropriate gRPC status codes and user-friendly messages
+		switch {
+		case errors.Is(err, dcerrors.ErrNotFound):
 			return nil, status.Error(codes.NotFound, "Account not found. Please check your username or register.")
-		case "INVALID_PASSWORD":
-			return nil, status.Error(codes.Unauthenticated, "Incorrect password. Please try again.")
-		case "EMAIL_NOT_VERIFIED":
+		case errors.Is(err, dcerrors.ErrInvalidAuth):
+			return nil, status.Error(codes.Unauthenticated, "Incorrect username or password. Please try again.")
+		case errors.Is(err, dcerrors.ErrUnauthorized):
 			return nil, status.Error(codes.PermissionDenied, "Please verify your email before logging in.")
-		default:
-			// For any other unexpected errors
-			return nil, status.Error(codes.Internal, "An unexpected error occurred. Please try again later.")
 		}
+		// For any other unexpected errors
+		return nil, status.Error(codes.Internal, "An unexpected error occurred. Please try again later.")
 	}
 
 	return &proto.LoginResponse{

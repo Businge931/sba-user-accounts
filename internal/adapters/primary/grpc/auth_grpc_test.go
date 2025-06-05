@@ -7,8 +7,9 @@ import (
 
 	"github.com/Businge931/sba-user-accounts/internal/adapters/primary/grpc"
 	"github.com/Businge931/sba-user-accounts/internal/core/domain"
+	dcerrors "github.com/Businge931/sba-user-accounts/internal/core/errors"
 	"github.com/Businge931/sba-user-accounts/internal/core/services/mocks"
-	"github.com/Businge931/sba-user-accounts/proto"
+	pb "github.com/Businge931/sba-user-accounts/proto"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"google.golang.org/grpc/codes"
@@ -53,28 +54,31 @@ func TestAuthServer_Register(t *testing.T) {
 			},
 			args: TestArgs{
 				ctx: context.Background(),
-				request: &proto.RegisterRequest{
-					Username: "test@example.com",
-					Password: "Password123!",
+				request: &pb.RegisterRequest{
+					Email:     "test@example.com",
+					Password:  "Password123!",
+					FirstName: "Test",
+					LastName:  "User",
 				},
 			},
 			before: func(deps TestDependencies) {
-				deps.authService.On("Register", 
-					"test@example.com", 
-					"Password123!", 
-					"test@example.com", 
-					"").Return(&domain.User{
-						ID:              "user1",
-						Email:           "test@example.com",
-						FirstName:       "test@example.com",
-						LastName:        "",
-						IsEmailVerified: false,
-					}, nil)
+				deps.authService.On("Register", mock.MatchedBy(func(req domain.RegisterRequest) bool {
+					return req.Email == "test@example.com" &&
+						req.Password == "Password123!" &&
+						req.FirstName == "Test" &&
+						req.LastName == "User"
+				})).Return(&domain.User{
+					ID:              "user1",
+					Email:           "test@example.com",
+					FirstName:       "Test",
+					LastName:        "User",
+					IsEmailVerified: false,
+				}, nil)
 			},
 			expected: TestExpectations{
-				response: &proto.RegisterResponse{
+				response: &pb.RegisterResponse{
 					Success: true,
-					Message: "User registered successfully",
+					Message: "User registered successfully. Please check your email to verify your account.",
 				},
 				error: false,
 			},
@@ -88,9 +92,11 @@ func TestAuthServer_Register(t *testing.T) {
 			},
 			args: TestArgs{
 				ctx: context.Background(),
-				request: &proto.RegisterRequest{
-					Username: "",
-					Password: "",
+				request: &pb.RegisterRequest{
+					Email:     "",
+					Password:  "",
+					FirstName: "",
+					LastName:  "",
 				},
 			},
 			before: func(deps TestDependencies) {
@@ -98,7 +104,7 @@ func TestAuthServer_Register(t *testing.T) {
 			},
 			expected: TestExpectations{
 				error:    true,
-				errorMsg: "missing required fields",
+				errorMsg: "missing required fields: email, password, first_name, and last_name are required",
 				code:     codes.InvalidArgument,
 			},
 		},
@@ -111,21 +117,26 @@ func TestAuthServer_Register(t *testing.T) {
 			},
 			args: TestArgs{
 				ctx: context.Background(),
-				request: &proto.RegisterRequest{
-					Username: "existing@example.com",
-					Password: "Password123!",
+				request: &pb.RegisterRequest{
+					Email:     "existing@example.com",
+					Password:  "Password123!",
+					FirstName: "Existing",
+					LastName:  "User",
 				},
 			},
 			before: func(deps TestDependencies) {
-				deps.authService.On("Register", 
-					"existing@example.com", 
-					"Password123!", 
-					"existing@example.com", 
-					"").Return(nil, errors.New("user already exists"))
+				deps.authService.On("Register", mock.MatchedBy(func(req domain.RegisterRequest) bool {
+					return req.Email == "existing@example.com" &&
+						req.Password == "Password123!" &&
+						req.FirstName == "Existing" &&
+						req.LastName == "User"
+				})).Return(nil, errors.New("user already exists"))
+				deps.logger.On("Errorf", mock.Anything, mock.Anything).Maybe()
+				deps.logger.On("Infof", mock.Anything, mock.Anything, mock.Anything).Maybe()
 			},
 			expected: TestExpectations{
 				error:    true,
-				errorMsg: "user already exists",
+				errorMsg: "Failed to register user",
 				code:     codes.Internal,
 			},
 		},
@@ -139,15 +150,15 @@ func TestAuthServer_Register(t *testing.T) {
 				TokenService: tc.deps.tokenService,
 				Logger:       tc.deps.logger,
 			}
-			
+
 			// Set up expectations
 			if tc.before != nil {
 				tc.before(tc.deps)
 			}
-			
+
 			// Execute
-			resp, err := server.Register(tc.args.ctx, tc.args.request.(*proto.RegisterRequest))
-			
+			resp, err := server.Register(tc.args.ctx, tc.args.request.(*pb.RegisterRequest))
+
 			// Verify
 			if tc.expected.error {
 				assert.Error(t, err)
@@ -159,11 +170,11 @@ func TestAuthServer_Register(t *testing.T) {
 				assert.NoError(t, err)
 				assert.Equal(t, tc.expected.response, resp)
 			}
-			
+
 			// Verify all expectations were met
-			mock.AssertExpectationsForObjects(t, 
-				tc.deps.authService, 
-				tc.deps.tokenService, 
+			mock.AssertExpectationsForObjects(t,
+				tc.deps.authService,
+				tc.deps.tokenService,
 				tc.deps.logger)
 		})
 	}
@@ -186,21 +197,21 @@ func TestAuthServer_Login(t *testing.T) {
 			},
 			args: TestArgs{
 				ctx: context.Background(),
-				request: &proto.LoginRequest{
-					Username: "test@example.com",
+				request: &pb.LoginRequest{
+					Email:    "test@example.com",
 					Password: "Password123!",
 				},
 			},
 			before: func(deps TestDependencies) {
-				deps.authService.On("Login", 
-					"test@example.com", 
-					"Password123!").Return("jwt-token", nil)
+				deps.authService.On("Login", mock.MatchedBy(func(req domain.LoginRequest) bool {
+					return req.Email == "test@example.com" && req.Password == "Password123!"
+				})).Return("valid-jwt-token", nil)
 				deps.logger.On("Infof", mock.Anything, mock.Anything, mock.Anything).Maybe()
 			},
 			expected: TestExpectations{
-				response: &proto.LoginResponse{
+				response: &pb.LoginResponse{
 					Success: true,
-					Token:   "jwt-token",
+					Token:   "valid-jwt-token",
 					Message: "Login successful",
 				},
 				error: false,
@@ -215,8 +226,8 @@ func TestAuthServer_Login(t *testing.T) {
 			},
 			args: TestArgs{
 				ctx: context.Background(),
-				request: &proto.LoginRequest{
-					Username: "",
+				request: &pb.LoginRequest{
+					Email:    "",
 					Password: "",
 				},
 			},
@@ -225,7 +236,7 @@ func TestAuthServer_Login(t *testing.T) {
 			},
 			expected: TestExpectations{
 				error:    true,
-				errorMsg: "Missing username or password",
+				errorMsg: "Missing email or password",
 				code:     codes.InvalidArgument,
 			},
 		},
@@ -238,21 +249,21 @@ func TestAuthServer_Login(t *testing.T) {
 			},
 			args: TestArgs{
 				ctx: context.Background(),
-				request: &proto.LoginRequest{
-					Username: "nonexistent@example.com",
+				request: &pb.LoginRequest{
+					Email:    "nonexistent@example.com",
 					Password: "Password123!",
 				},
 			},
 			before: func(deps TestDependencies) {
-				deps.authService.On("Login", 
-					"nonexistent@example.com", 
-					"Password123!").Return("", errors.New("USER_NOT_FOUND"))
+				deps.authService.On("Login", mock.MatchedBy(func(req domain.LoginRequest) bool {
+					return req.Email == "nonexistent@example.com" && req.Password == "Password123!"
+				})).Return("", errors.New("USER_NOT_FOUND"))
 				deps.logger.On("Infof", mock.Anything, mock.Anything, mock.Anything).Once()
 			},
 			expected: TestExpectations{
 				error:    true,
-				errorMsg: "Account not found",
-				code:     codes.NotFound,
+				errorMsg: "An unexpected error occurred. Please try again later.",
+				code:     codes.Internal,
 			},
 		},
 		{
@@ -264,20 +275,20 @@ func TestAuthServer_Login(t *testing.T) {
 			},
 			args: TestArgs{
 				ctx: context.Background(),
-				request: &proto.LoginRequest{
-					Username: "test@example.com",
+				request: &pb.LoginRequest{
+					Email:    "test@example.com",
 					Password: "WrongPassword!",
 				},
 			},
 			before: func(deps TestDependencies) {
-				deps.authService.On("Login", 
-					"test@example.com", 
-					"WrongPassword!").Return("", errors.New("INVALID_PASSWORD"))
+				deps.authService.On("Login", mock.MatchedBy(func(req domain.LoginRequest) bool {
+					return req.Email == "test@example.com" && req.Password == "WrongPassword!"
+				})).Return("", dcerrors.ErrInvalidAuth)
 				deps.logger.On("Infof", mock.Anything, mock.Anything, mock.Anything).Once()
 			},
 			expected: TestExpectations{
 				error:    true,
-				errorMsg: "Incorrect password",
+				errorMsg: "Incorrect username or password. Please try again.",
 				code:     codes.Unauthenticated,
 			},
 		},
@@ -291,15 +302,15 @@ func TestAuthServer_Login(t *testing.T) {
 				TokenService: tc.deps.tokenService,
 				Logger:       tc.deps.logger,
 			}
-			
+
 			// Set up expectations
 			if tc.before != nil {
 				tc.before(tc.deps)
 			}
-			
+
 			// Execute
-			resp, err := server.Login(tc.args.ctx, tc.args.request.(*proto.LoginRequest))
-			
+			resp, err := server.Login(tc.args.ctx, tc.args.request.(*pb.LoginRequest))
+
 			// Verify
 			if tc.expected.error {
 				assert.Error(t, err)
@@ -311,11 +322,11 @@ func TestAuthServer_Login(t *testing.T) {
 				assert.NoError(t, err)
 				assert.Equal(t, tc.expected.response, resp)
 			}
-			
+
 			// Verify all expectations were met
-			mock.AssertExpectationsForObjects(t, 
-				tc.deps.authService, 
-				tc.deps.tokenService, 
+			mock.AssertExpectationsForObjects(t,
+				tc.deps.authService,
+				tc.deps.tokenService,
 				tc.deps.logger)
 		})
 	}
@@ -338,7 +349,7 @@ func TestAuthServer_VerifyToken(t *testing.T) {
 			},
 			args: TestArgs{
 				ctx: context.Background(),
-				request: &proto.VerifyTokenRequest{
+				request: &pb.VerifyTokenRequest{
 					Token: "valid-token",
 				},
 			},
@@ -346,7 +357,7 @@ func TestAuthServer_VerifyToken(t *testing.T) {
 				deps.tokenService.On("ValidateToken", "valid-token").Return("user123", nil)
 			},
 			expected: TestExpectations{
-				response: &proto.VerifyTokenResponse{
+				response: &pb.VerifyTokenResponse{
 					Success: true,
 					Message: "Token is valid",
 				},
@@ -362,7 +373,7 @@ func TestAuthServer_VerifyToken(t *testing.T) {
 			},
 			args: TestArgs{
 				ctx: context.Background(),
-				request: &proto.VerifyTokenRequest{
+				request: &pb.VerifyTokenRequest{
 					Token: "",
 				},
 			},
@@ -384,7 +395,7 @@ func TestAuthServer_VerifyToken(t *testing.T) {
 			},
 			args: TestArgs{
 				ctx: context.Background(),
-				request: &proto.VerifyTokenRequest{
+				request: &pb.VerifyTokenRequest{
 					Token: "invalid-token",
 				},
 			},
@@ -408,15 +419,15 @@ func TestAuthServer_VerifyToken(t *testing.T) {
 				TokenService: tc.deps.tokenService,
 				Logger:       tc.deps.logger,
 			}
-			
+
 			// Set up expectations
 			if tc.before != nil {
 				tc.before(tc.deps)
 			}
-			
+
 			// Execute
-			resp, err := server.VerifyToken(tc.args.ctx, tc.args.request.(*proto.VerifyTokenRequest))
-			
+			resp, err := server.VerifyToken(tc.args.ctx, tc.args.request.(*pb.VerifyTokenRequest))
+
 			// Verify
 			if tc.expected.error {
 				assert.Error(t, err)
@@ -428,11 +439,11 @@ func TestAuthServer_VerifyToken(t *testing.T) {
 				assert.NoError(t, err)
 				assert.Equal(t, tc.expected.response, resp)
 			}
-			
+
 			// Verify all expectations were met
-			mock.AssertExpectationsForObjects(t, 
-				tc.deps.authService, 
-				tc.deps.tokenService, 
+			mock.AssertExpectationsForObjects(t,
+				tc.deps.authService,
+				tc.deps.tokenService,
 				tc.deps.logger)
 		})
 	}
