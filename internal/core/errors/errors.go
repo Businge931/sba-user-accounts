@@ -7,13 +7,15 @@ import (
 
 // Standard error types that can be used throughout the application
 var (
-	ErrNotFound      = errors.New("resource not found")
-	ErrAlreadyExists = errors.New("resource already exists")
-	ErrInvalidAuth   = errors.New("invalid authentication")
-	ErrUnauthorized  = errors.New("unauthorized")
-	ErrInvalidInput  = errors.New("invalid input")
-	ErrInternal      = errors.New("internal error")
-	ErrTokenExpired  = errors.New("token expired")
+	ErrNotFound         = errors.New("resource not found")
+	ErrAlreadyExists    = errors.New("resource already exists")
+	ErrEmailAlreadyExists = errors.New("email already exists")
+	ErrInvalidAuth      = errors.New("invalid authentication")
+	ErrUnauthorized     = errors.New("unauthorized")
+	ErrInvalidInput     = errors.New("invalid input")
+	ErrInternal         = errors.New("internal error")
+	ErrTokenExpired     = errors.New("token expired")
+	ErrUserNotFound     = errors.New("user not found")
 )
 
 // Domain error types
