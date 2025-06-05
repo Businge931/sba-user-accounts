@@ -8,8 +8,7 @@ import (
 )
 
 // LoggingEmailService is a simple implementation of the EmailService interface
-// that logs emails instead of sending them. In a production environment,
-// this would be replaced with a real email service.
+// that logs emails instead of sending them. A real implementation would use an email service. **TO BE ADDED LATER**
 type LoggingEmailService struct {
 	appBaseURL string
 }
