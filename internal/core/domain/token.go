@@ -4,7 +4,6 @@ import (
 	"time"
 )
 
-// TokenType represents the type of token
 type TokenType string
 
 const (
