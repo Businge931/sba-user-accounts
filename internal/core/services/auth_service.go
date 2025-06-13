@@ -2,9 +2,6 @@ package services
 
 import (
 	"fmt"
-	"time"
-
-	"golang.org/x/crypto/bcrypt"
 
 	"github.com/Businge931/sba-user-accounts/internal/core/domain"
 	"github.com/Businge931/sba-user-accounts/internal/core/errors"
@@ -12,45 +9,34 @@ import (
 )
 
 type authService struct {
-	userRepo  ports.UserRepository
-	authRepo  ports.AuthRepository
-	tokenSvc  ports.TokenService
-	validator ports.ValidationService
-	logger    ports.Logger
+	userRepo          ports.UserRepository
+	validator         ports.ValidationService
+	logger            ports.Logger
+	indentityProvider ports.IdentityService
+	// authRepo ports.AuthRepository
+	// tokenSvc          ports.TokenService
 }
 
-// NewAuthService creates a new instance of authentication service
 func NewAuthService(
 	userRepo ports.UserRepository,
-	authRepo ports.AuthRepository,
-	tokenSvc ports.TokenService,
 	validator ports.ValidationService,
+	indentityProvider ports.IdentityService,
 	logger ports.Logger,
+	// authRepo ports.AuthRepository,
+	// tokenSvc ports.TokenService,
 ) ports.AuthService {
 	return &authService{
-		userRepo:  userRepo,
-		authRepo:  authRepo,
-		tokenSvc:  tokenSvc,
-		validator: validator,
-		logger:    logger,
+		userRepo:          userRepo,
+		validator:         validator,
+		indentityProvider: indentityProvider,
+		logger:            logger,
+		// authRepo: authRepo,
+		// tokenSvc:  tokenSvc,
 	}
 }
 
 func (svc *authService) Register(req domain.RegisterRequest) (*domain.User, error) {
-	// Validate input data
-	if err := svc.validator.ValidateEmail(req.Email); err != nil {
-		return nil, err
-	}
-
-	if err := svc.validator.ValidatePassword(req.Password); err != nil {
-		return nil, err
-	}
-
-	if err := svc.validator.ValidateName(req.FirstName, "first name"); err != nil {
-		return nil, err
-	}
-
-	if err := svc.validator.ValidateName(req.LastName, "last name"); err != nil {
+	if err := svc.validator.ValidateRegisterRequest(req); err != nil {
 		return nil, err
 	}
 
@@ -60,31 +46,15 @@ func (svc *authService) Register(req domain.RegisterRequest) (*domain.User, erro
 		return nil, errors.NewAlreadyExistsError("user with this email already exists", nil)
 	}
 
-	// Hash password
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
+	// Register user using identity provider
+	user, err := svc.indentityProvider.Register(req)
 	if err != nil {
-		return nil, fmt.Errorf("failed to hash password: %w", err)
+		return nil, fmt.Errorf("failed to register user,%w", err)
 	}
 
-	// Create user with UUID
-	user := domain.NewUser(req.Email, req.FirstName, req.LastName)
-	user.HashedPassword = string(hashedPassword)
-	// Use UUID from standard library - this would be better, but keeping format similar
-	user.ID = fmt.Sprintf("%d-%d", time.Now().UnixNano(), time.Now().Nanosecond())
-
+	//save user to repository
 	if err := svc.userRepo.Create(user); err != nil {
 		return nil, err
-	}
-
-	// Skip verification token if authRepo is nil
-	if svc.authRepo != nil {
-		// Generate and send verification token using the token service
-		token := svc.tokenSvc.GenerateVerificationToken()
-		if err := svc.authRepo.StoreVerificationToken(user.ID, token); err != nil {
-			// Just log the error and continue
-			// Don't return an error as this is optional functionality
-			svc.logger.Warnf("Failed to store verification token for user %s: %v", user.ID, err)
-		}
 	}
 
 	// Send verification email - skipped as EmailService not implemented
@@ -93,34 +63,20 @@ func (svc *authService) Register(req domain.RegisterRequest) (*domain.User, erro
 }
 
 func (svc *authService) Login(req domain.LoginRequest) (string, error) {
-	// Validate email
-	if err := svc.validator.ValidateEmail(req.Email); err != nil {
+	if err := svc.validator.ValidateLoginRequest(req); err != nil {
 		return "", err
 	}
 
 	// Check if user exists
 	user, err := svc.userRepo.GetByEmail(req.Email)
 	if err != nil {
-		// Log the actual error for debugging purposes
 		svc.logger.Debugf("Error getting user by email: %v", err)
 		return "", errors.NewNotFoundError("user not found", err)
 	}
 
-	// Check if password is correct
-	if compareErr := bcrypt.CompareHashAndPassword([]byte(user.HashedPassword), []byte(req.Password)); compareErr != nil {
-		// Log the error but don't expose it in the response
-		svc.logger.Debugf("Password comparison failed: %v", compareErr)
-		return "", errors.NewInvalidAuthError("invalid password", compareErr)
-	}
-
-	// Temporarily bypassing email verification check for testing
-	// if !user.IsEmailVerified {
-	// 	return "", ErrEmailNotVerified
-	// }
-	// Generate JWT token using token service
-	token, err := svc.tokenSvc.GenerateToken(user.ID)
+	token, err := svc.indentityProvider.Login(req, user)
 	if err != nil {
-		return "", fmt.Errorf("failed to generate token: %w", err)
+		return "", err
 	}
 	return token, nil
 }
