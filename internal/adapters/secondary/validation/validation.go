@@ -4,6 +4,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/Businge931/sba-user-accounts/internal/core/domain"
 	"github.com/Businge931/sba-user-accounts/internal/core/errors"
 	validation "github.com/go-ozzo/ozzo-validation/v4"
 	"github.com/go-ozzo/ozzo-validation/v4/is"
@@ -13,6 +14,32 @@ type Validator struct{}
 
 func NewValidator() *Validator {
 	return &Validator{}
+}
+
+func (v *Validator) ValidateRegisterRequest(req domain.RegisterRequest) error {
+	if err := v.ValidateEmail(req.Email); err != nil {
+		return err
+	}
+	if err := v.ValidatePassword(req.Password); err != nil {
+		return err
+	}
+	if err := v.ValidateName(req.FirstName, "first name"); err != nil {
+		return err
+	}
+	if err := v.ValidateName(req.LastName, "last name"); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (v *Validator) ValidateLoginRequest(req domain.LoginRequest) error {
+	if err := v.ValidateEmail(req.Email); err != nil {
+		return err
+	}
+	if err := v.ValidatePassword(req.Password); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (v *Validator) ValidateEmail(email string) error {
