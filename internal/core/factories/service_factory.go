@@ -4,9 +4,9 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/Businge931/sba-user-accounts/internal/adapters/secondary/email"
+	"github.com/Businge931/sba-user-accounts/internal/adapters/secondary/identity/token"
 	"github.com/Businge931/sba-user-accounts/internal/adapters/secondary/logging"
 	"github.com/Businge931/sba-user-accounts/internal/adapters/secondary/postgres"
-	"github.com/Businge931/sba-user-accounts/internal/adapters/secondary/token"
 	"github.com/Businge931/sba-user-accounts/internal/adapters/secondary/validation"
 	"github.com/Businge931/sba-user-accounts/internal/config"
 	"github.com/Businge931/sba-user-accounts/internal/core/domain"
@@ -16,14 +16,15 @@ import (
 
 // ServiceFactory creates and initializes all application services
 type ServiceFactory struct {
-	db        *gorm.DB
-	config    *config.Config
-	logger    ports.Logger
-	validator ports.ValidationService
-	userRepo  ports.UserRepository
-	authRepo  ports.AuthRepository
-	tokenSvc  ports.TokenService
-	emailSvc  ports.EmailService
+	db                *gorm.DB
+	config            *config.Config
+	logger            ports.Logger
+	validator         ports.ValidationService
+	userRepo          ports.UserRepository
+	authRepo          ports.AuthRepository
+	tokenSvc          ports.TokenService
+	emailSvc          ports.EmailService
+	indentityProvider ports.IdentityService
 }
 
 func NewServiceFactory(db *gorm.DB, config *config.Config) *ServiceFactory {
@@ -49,7 +50,7 @@ func (f *ServiceFactory) AutoMigrate() error {
 
 func (f *ServiceFactory) InitializeRepositories() {
 	f.userRepo = postgres.NewUserRepository(f.db)
-	f.authRepo = postgres.NewAuthRepository(f.db) 
+	f.authRepo = postgres.NewAuthRepository(f.db)
 }
 
 func (f *ServiceFactory) InitializeServices() {
@@ -57,13 +58,13 @@ func (f *ServiceFactory) InitializeServices() {
 	f.tokenSvc = token.NewJWTTokenService(f.config.Auth.JWTSecret, f.config.Auth.TokenExpiryMin)
 
 	// Create a simple email service implementation
-	appBaseURL := "http://localhost:" + f.config.Server.GRPCPort 
+	appBaseURL := "http://localhost:" + f.config.Server.GRPCPort
 	f.emailSvc = email.NewLoggingEmailService(appBaseURL)
 }
 
 // GetAuthService returns the authentication service
 func (f *ServiceFactory) GetAuthService() ports.AuthService {
-	return services.NewAuthService(f.userRepo, f.authRepo, f.tokenSvc, f.validator, f.logger)
+	return services.NewAuthService(f.userRepo, f.validator, f.indentityProvider, f.logger)
 }
 
 // GetAccountManagementService returns the account management service
