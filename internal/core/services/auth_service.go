@@ -9,27 +9,27 @@ import (
 )
 
 type authService struct {
-	userRepo          ports.UserRepository
-	validator         ports.ValidationService
-	logger            ports.Logger
-	indentityProvider ports.IdentityService
+	userRepo         ports.UserRepository
+	validator        ports.ValidationService
+	logger           ports.Logger
+	identityProvider ports.IdentityService
 	// authRepo ports.AuthRepository
-	// tokenSvc          ports.TokenService
+	// tokenSvc       ports.TokenService
 }
 
 func NewAuthService(
 	userRepo ports.UserRepository,
 	validator ports.ValidationService,
-	indentityProvider ports.IdentityService,
+	identityProvider ports.IdentityService,
 	logger ports.Logger,
 	// authRepo ports.AuthRepository,
 	// tokenSvc ports.TokenService,
 ) ports.AuthService {
 	return &authService{
-		userRepo:          userRepo,
-		validator:         validator,
-		indentityProvider: indentityProvider,
-		logger:            logger,
+		userRepo:         userRepo,
+		validator:        validator,
+		identityProvider: identityProvider,
+		logger:           logger,
 		// authRepo: authRepo,
 		// tokenSvc:  tokenSvc,
 	}
@@ -47,7 +47,7 @@ func (svc *authService) Register(req domain.RegisterRequest) (*domain.User, erro
 	}
 
 	// Register user using identity provider
-	user, err := svc.indentityProvider.Register(req)
+	user, err := svc.identityProvider.Register(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to register user,%w", err)
 	}
@@ -74,77 +74,9 @@ func (svc *authService) Login(req domain.LoginRequest) (string, error) {
 		return "", errors.NewNotFoundError("user not found", err)
 	}
 
-	token, err := svc.indentityProvider.Login(req, user)
+	token, err := svc.identityProvider.Login(req, user)
 	if err != nil {
 		return "", err
 	}
 	return token, nil
 }
-
-// func (s *authService) VerifyEmail(token string) error {
-// 	userID, err := s.authRepo.GetUserIDByVerificationToken(token)
-// 	if err != nil {
-// 		return errors.New("invalid or expired token")
-// 	}
-
-// 	user, err := s.userRepo.GetByID(userID)
-// 	if err != nil {
-// 		return err
-// 	}
-
-// 	user.IsEmailVerified = true
-// 	return s.userRepo.Update(user)
-// }
-
-// func (s *authService) RequestPasswordReset(email string) error {
-// 	user, err := s.userRepo.GetByEmail(email)
-// 	if err != nil {
-// 		return nil // Don't reveal if email exists
-// 	}
-
-// 	token := generateToken() // Implementation needed
-// 	if err := s.authRepo.StoreResetToken(user.ID, token); err != nil {
-// 		return err
-// 	}
-
-// 	return s.emailSvc.SendPasswordResetEmail(email, token)
-// }
-
-// func (s *authService) ResetPassword(token, newPassword string) error {
-// 	userID, err := s.authRepo.GetUserIDByResetToken(token)
-// 	if err != nil {
-// 		return errors.New("invalid or expired token")
-// 	}
-
-// 	user, err := s.userRepo.GetByID(userID)
-// 	if err != nil {
-// 		return err
-// 	}
-
-// 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
-// 	if err != nil {
-// 		return err
-// 	}
-
-// 	user.HashedPassword = string(hashedPassword)
-// 	return s.userRepo.Update(user)
-// }
-
-// func (s *authService) ChangePassword(userID, oldPassword, newPassword string) error {
-// 	user, err := s.userRepo.GetByID(userID)
-// 	if err != nil {
-// 		return err
-// 	}
-
-// 	if err := bcrypt.CompareHashAndPassword([]byte(user.HashedPassword), []byte(oldPassword)); err != nil {
-// 		return errors.New("invalid current password")
-// 	}
-
-// 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
-// 	if err != nil {
-// 		return err
-// 	}
-
-// 	user.HashedPassword = string(hashedPassword)
-// 	return s.userRepo.Update(user)
-// }
