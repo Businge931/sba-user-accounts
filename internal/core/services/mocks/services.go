@@ -99,3 +99,23 @@ func (m *MockAccountManagementService) ChangePassword(userID, oldPassword, newPa
 	args := m.Called(userID, oldPassword, newPassword)
 	return args.Error(0)
 }
+
+// MockIdentityService mocks the IdentityService interface for testing
+type MockIdentityService struct {
+	mock.Mock
+}
+
+// Register mocks the Register method
+func (m *MockIdentityService) Register(req domain.RegisterRequest) (*domain.User, error) {
+	args := m.Called(req)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*domain.User), args.Error(1)
+}
+
+// Login mocks the Login method
+func (m *MockIdentityService) Login(req domain.LoginRequest, user *domain.User) (string, error) {
+	args := m.Called(req, user)
+	return args.String(0), args.Error(1)
+}
