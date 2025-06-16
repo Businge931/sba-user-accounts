@@ -6,23 +6,24 @@ import (
 	"github.com/stretchr/testify/mock"
 )
 
-// TestDependencies contains all the mock dependencies needed for auth service tests
 type TestDependencies struct {
-	userRepo  *mocks.MockUserRepository
-	authRepo  *mocks.MockAuthRepository
-	tokenSvc  *mocks.MockTokenService
-	logger    *mocks.MockLogger
-	validator *validation.Validator
+	userRepo    *mocks.MockUserRepository
+	authRepo    *mocks.MockAuthRepository
+	tokenSvc    *mocks.MockTokenService
+	identitySvc *mocks.MockIdentityService
+	logger      *mocks.MockLogger
+	validator   *validation.Validator
 }
 
 // SetupTestDependencies creates and returns all the mock dependencies needed for testing
 func SetupTestDependencies() *TestDependencies {
 	return &TestDependencies{
-		userRepo:  new(mocks.MockUserRepository),
-		authRepo:  new(mocks.MockAuthRepository),
-		tokenSvc:  new(mocks.MockTokenService),
-		logger:    new(mocks.MockLogger),
-		validator: validation.NewValidator(),
+		userRepo:    new(mocks.MockUserRepository),
+		authRepo:    new(mocks.MockAuthRepository),
+		tokenSvc:    new(mocks.MockTokenService),
+		identitySvc: new(mocks.MockIdentityService),
+		logger:      new(mocks.MockLogger),
+		validator:   validation.NewValidator(),
 	}
 }
 
@@ -38,13 +39,20 @@ func AuthServiceSetupMockLogger(logger *mocks.MockLogger) {
 	logger.On("Errorf", mock.Anything, mock.Anything).Return()
 }
 
-// newTestAuthService creates a new AuthService instance with the provided dependencies
+// resetMocks resets all mock expectations before each test case
+func (d *TestDependencies) resetMocks() {
+	d.userRepo.ExpectedCalls = nil
+	d.authRepo.ExpectedCalls = nil
+	d.tokenSvc.ExpectedCalls = nil
+	d.identitySvc.ExpectedCalls = nil
+	d.logger.ExpectedCalls = nil
+}
+
 func newTestAuthService(deps *TestDependencies) *authService {
 	return &authService{
-		userRepo: deps.userRepo,
-		// authRepo:  deps.authRepo,
-		// tokenSvc:  deps.tokenSvc,
-		validator: deps.validator,
-		logger:    deps.logger,
+		userRepo:         deps.userRepo,
+		validator:        deps.validator,
+		logger:           deps.logger,
+		identityProvider: deps.identitySvc,
 	}
 }
