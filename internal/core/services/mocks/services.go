@@ -119,3 +119,27 @@ func (m *MockIdentityService) Login(req domain.LoginRequest, user *domain.User) 
 	args := m.Called(req, user)
 	return args.String(0), args.Error(1)
 }
+
+// VerifyEmail mocks the VerifyEmail method
+func (m *MockIdentityService) VerifyEmail(token string) (string, error) {
+	args := m.Called(token)
+	return args.String(0), args.Error(1)
+}
+
+// RequestPasswordReset mocks the RequestPasswordReset method
+func (m *MockIdentityService) RequestPasswordReset(email string) (string, error) {
+	args := m.Called(email)
+	return args.String(0), args.Error(1)
+}
+
+// ResetPassword mocks the ResetPassword method
+func (m *MockIdentityService) ResetPassword(token, newPassword string) (string, string, error) {
+	args := m.Called(token, newPassword)
+	return args.String(0), args.String(1), args.Error(2)
+}
+
+// ChangePassword mocks the ChangePassword method
+func (m *MockIdentityService) ChangePassword(userID, oldPassword, newPassword string) (string, error) {
+	args := m.Called(userID, oldPassword, newPassword)
+	return args.String(0), args.Error(1)
+}

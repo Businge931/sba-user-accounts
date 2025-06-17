@@ -44,6 +44,6 @@ func newTestAuthService(deps *TestDependencies) *authService {
 		userRepo:         deps.userRepo,
 		validator:        deps.validator,
 		logger:           deps.logger,
-		
+		identityProvider: deps.identitySvc,
 	}
 }

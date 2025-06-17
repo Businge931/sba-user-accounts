@@ -14,9 +14,10 @@ import (
 
 func TestAccountService_verifyEmail(t *testing.T) {
 	type dependencies struct {
-		userRepo *mocks.MockUserRepository
-		authRepo *mocks.MockAuthRepository
-		tokenSvc *mocks.MockTokenService
+		userRepo         *mocks.MockUserRepository
+		authRepo         *mocks.MockAuthRepository
+		tokenSvc         *mocks.MockTokenService
+		identityProvider *mocks.MockIdentityService
 	}
 
 	type args struct {
@@ -24,27 +25,28 @@ func TestAccountService_verifyEmail(t *testing.T) {
 	}
 
 	tests := []struct {
-		name     string
-		deps     dependencies
-		args     args
-		before   func(deps *testDeps)
-		after    func(t *testing.T, deps *testDeps)
-		wantErr  bool
+		name      string
+		deps      dependencies
+		args      args
+		before    func(deps *testDeps)
+		after     func(t *testing.T, deps *testDeps)
+		wantErr   bool
 		errorType cerrors.ErrorType
 	}{
 		{
 			name: "VerifyEmail_Success",
 			deps: dependencies{
-				userRepo: new(mocks.MockUserRepository),
-				authRepo: new(mocks.MockAuthRepository),
-				tokenSvc: new(mocks.MockTokenService),
+				userRepo:         new(mocks.MockUserRepository),
+				authRepo:         new(mocks.MockAuthRepository),
+				tokenSvc:         new(mocks.MockTokenService),
+				identityProvider: new(mocks.MockIdentityService),
 			},
 			args: args{
 				token: "valid-verification-token",
 			},
 			before: func(deps *testDeps) {
 				userID := "user-id-123"
-				deps.authRepo.On("GetUserIDByVerificationToken", "valid-verification-token").Return(userID, nil)
+				deps.identityProvider.On("VerifyEmail", "valid-verification-token").Return(userID, nil)
 				deps.userRepo.On("GetByID", userID).Return(&domain.User{
 					ID:              userID,
 					Email:           "test@example.com",
@@ -55,29 +57,49 @@ func TestAccountService_verifyEmail(t *testing.T) {
 				})).Return(nil)
 			},
 			after: func(t *testing.T, deps *testDeps) {
+				deps.identityProvider.AssertExpectations(t)
 				deps.userRepo.AssertExpectations(t)
-				deps.authRepo.AssertExpectations(t)
-				deps.tokenSvc.AssertExpectations(t)
 			},
 			wantErr: false,
 		},
 		{
 			name: "VerifyEmail_InvalidToken",
 			deps: dependencies{
-				authRepo: new(mocks.MockAuthRepository),
+				identityProvider: new(mocks.MockIdentityService),
 			},
 			args: args{
 				token: "invalid-verification-token",
 			},
 			before: func(deps *testDeps) {
-				deps.authRepo.On("GetUserIDByVerificationToken", "invalid-verification-token").
-					Return("", errors.New("token not found"))
+				deps.identityProvider.On("VerifyEmail", "invalid-verification-token").
+					Return("", errors.New("invalid or expired token"))
 			},
 			after: func(t *testing.T, deps *testDeps) {
-				deps.authRepo.AssertExpectations(t)
+				deps.identityProvider.AssertExpectations(t)
 			},
-			wantErr: true,
-			errorType: cerrors.ErrorTypeInvalidInput,
+			wantErr:   true,
+			errorType: "", // The error from identity provider is passed through as-is
+		},
+		{
+			name: "VerifyEmail_UserNotFound",
+			deps: dependencies{
+				userRepo:         new(mocks.MockUserRepository),
+				identityProvider: new(mocks.MockIdentityService),
+			},
+			args: args{
+				token: "valid-but-user-not-found",
+			},
+			before: func(deps *testDeps) {
+				userID := "non-existent-user"
+				deps.identityProvider.On("VerifyEmail", "valid-but-user-not-found").Return(userID, nil)
+				deps.userRepo.On("GetByID", userID).Return(nil, errors.New("user not found"))
+			},
+			after: func(t *testing.T, deps *testDeps) {
+				deps.identityProvider.AssertExpectations(t)
+				deps.userRepo.AssertExpectations(t)
+			},
+			wantErr:   true,
+			errorType: "", // The error from userRepo is passed through as-is
 		},
 	}
 
@@ -102,9 +124,12 @@ func TestAccountService_verifyEmail(t *testing.T) {
 			if tt.wantErr {
 				assert.Error(t, err)
 				if tt.errorType != "" {
-					domainErr, ok := err.(*cerrors.DomainError)
-					assert.True(t, ok)
-					assert.Equal(t, tt.errorType, domainErr.Type)
+					switch v := err.(type) {
+					case *cerrors.DomainError:
+						assert.Equal(t, tt.errorType, v.Type)
+					default:
+						t.Errorf("expected DomainError with type %s, got %T", tt.errorType, err)
+					}
 				}
 			} else {
 				assert.NoError(t, err)
@@ -114,74 +139,60 @@ func TestAccountService_verifyEmail(t *testing.T) {
 			deps.userRepo.AssertExpectations(t)
 			deps.authRepo.AssertExpectations(t)
 			deps.tokenSvc.AssertExpectations(t)
+			deps.identityProvider.AssertExpectations(t)
+			// Check email service expectations if email was expected to be sent
+			if tt.name == "RequestPasswordReset_Success" {
+				deps.emailSvc.AssertExpectations(t)
+			}
 		})
 	}
 }
 
 func TestAccountService_RequestPasswordReset(t *testing.T) {
-	// Define test dependencies
-	type dependencies struct {
-		userRepo *mocks.MockUserRepository
-		authRepo *mocks.MockAuthRepository
-		tokenSvc *mocks.MockTokenService
-	}
-
-	// Define test arguments
-	type args struct {
-		email string
-	}
-
-	tests := []struct {
-		name     string
-		deps     dependencies
-		args     args
-		before   func(deps *testDeps)
-		after    func(t *testing.T, deps *testDeps)
-		wantErr  bool
+	// Define test case structure
+	type testCase struct {
+		name      string
+		args      struct {
+			email string
+		}
+		setup     func(*testDeps)
+		assert    func(*testing.T, *testDeps, error)
+		wantErr   bool
 		errorType cerrors.ErrorType
-	}{
+		emailSent bool
+	}
+
+	tests := []testCase{
 		{
 			name: "RequestPasswordReset_Success",
-			deps: dependencies{
-				userRepo: new(mocks.MockUserRepository),
-				authRepo: new(mocks.MockAuthRepository),
-				tokenSvc: new(mocks.MockTokenService),
-			},
-			args: args{
+			args: struct{ email string }{
 				email: "test@example.com",
 			},
-			before: func(deps *testDeps) {
-				userID := "user-id-123"
-				user := &domain.User{
-					ID:    userID,
-					Email: "test@example.com",
-				}
-				deps.userRepo.On("GetByEmail", "test@example.com").Return(user, nil)
-				deps.tokenSvc.On("GenerateResetToken").Return("reset-token-123")
-				deps.authRepo.On("StoreResetToken", userID, "reset-token-123").Return(nil)
+			setup: func(d *testDeps) {
+				token := "reset-token-123"
+				d.identityProvider.On("RequestPasswordReset", "test@example.com").Return(token, nil).Once()
+				d.emailSvc.On("SendPasswordResetEmail", "test@example.com", token).Return(nil).Once()
+				d.logger.On("Infof", mock.Anything, mock.Anything).Maybe()
 			},
-			after: func(t *testing.T, deps *testDeps) {
-				deps.userRepo.AssertExpectations(t)
-				deps.tokenSvc.AssertExpectations(t)
-				deps.authRepo.AssertExpectations(t)
+			assert: func(t *testing.T, d *testDeps, err error) {
+				d.identityProvider.AssertExpectations(t)
+				d.emailSvc.AssertExpectations(t)
 			},
-			wantErr: false,
+			emailSent: true,
 		},
 		{
 			name: "RequestPasswordReset_UserNotFound",
-			deps: dependencies{
-				userRepo: new(mocks.MockUserRepository),
-			},
-			args: args{
+			args: struct{ email string }{
 				email: "nonexistent@example.com",
 			},
-			before: func(deps *testDeps) {
-				deps.userRepo.On("GetByEmail", "nonexistent@example.com").Return(nil, errors.New("user not found"))
+			setup: func(d *testDeps) {
+				d.identityProvider.On("RequestPasswordReset", "nonexistent@example.com").Return("", nil).Once()
+				d.logger.On("Infof", mock.Anything, mock.Anything).Maybe()
 			},
-			after: func(t *testing.T, deps *testDeps) {
-				deps.userRepo.AssertExpectations(t)
+			assert: func(t *testing.T, d *testDeps, err error) {
+				d.identityProvider.AssertExpectations(t)
 			},
-			wantErr: false, // This operation doesn't return an error for security reasons
+			wantErr: false, // Should not return error for non-existent user (security measure)
 		},
 	}
 
@@ -191,9 +202,9 @@ func TestAccountService_RequestPasswordReset(t *testing.T) {
 			deps := setUpTestDeps()
 			setupLoggerExpectations(deps.logger)
 
-			// Run before function to set up mocks
-			if tt.before != nil {
-				tt.before(deps)
+			// Run setup function to configure mocks
+			if tt.setup != nil {
+				tt.setup(deps)
 			}
 
 			// Create service with test dependencies
@@ -214,9 +225,18 @@ func TestAccountService_RequestPasswordReset(t *testing.T) {
 				assert.NoError(t, err)
 			}
 
-			// Run after function for cleanup/verification
-			if tt.after != nil {
-				tt.after(t, deps)
+			// Run assertions
+			if tt.assert != nil {
+				tt.assert(t, deps, err)
+			}
+
+			// Verify all expectations were met
+			deps.userRepo.AssertExpectations(t)
+			deps.authRepo.AssertExpectations(t)
+			deps.tokenSvc.AssertExpectations(t)
+			deps.identityProvider.AssertExpectations(t)
+			if tt.emailSent {
+				deps.emailSvc.AssertExpectations(t)
 			}
 		})
 	}
@@ -225,72 +245,75 @@ func TestAccountService_RequestPasswordReset(t *testing.T) {
 func TestAccountService_ResetPassword(t *testing.T) {
 	// Define test dependencies
 	type dependencies struct {
-		userRepo *mocks.MockUserRepository
-		authRepo *mocks.MockAuthRepository
-		tokenSvc *mocks.MockTokenService
+		userRepo         *mocks.MockUserRepository
+		authRepo         *mocks.MockAuthRepository
+		tokenSvc         *mocks.MockTokenService
+		identityProvider *mocks.MockIdentityService
 	}
 
 	// Define test arguments
 	type args struct {
-		token      string
+		token       string
 		newPassword string
 	}
 
 	tests := []struct {
-		name     string
-		deps     dependencies
-		args     args
-		before   func(deps *testDeps)
-		after    func(t *testing.T, deps *testDeps)
-		wantErr  bool
+		name      string
+		deps      dependencies
+		args      args
+		before    func(deps *testDeps)
+		after     func(t *testing.T, deps *testDeps)
+		wantErr   bool
 		errorType cerrors.ErrorType
 	}{
 		{
 			name: "ResetPassword_Success",
 			deps: dependencies{
-				userRepo: new(mocks.MockUserRepository),
-				authRepo: new(mocks.MockAuthRepository),
-				tokenSvc: new(mocks.MockTokenService),
+				identityProvider: new(mocks.MockIdentityService),
 			},
-			args: args{
-				token:      "valid-reset-token",
+			args: struct {
+				token       string
+				newPassword string
+			}{
+				token:       "valid-reset-token",
 				newPassword: "NewPassword123!",
 			},
-			before: func(deps *testDeps) {
-				userID := "user-id-123"
-				deps.authRepo.On("GetUserIDByResetToken", "valid-reset-token").Return(userID, nil)
-				deps.userRepo.On("GetByID", userID).Return(&domain.User{
-					ID:             userID,
-					Email:          "test@example.com",
+			before: func(d *testDeps) {
+				hashedPassword := "$2a$10$hashedpassword12345678901234567890123456789012345678901234567890"
+				d.identityProvider.On("ResetPassword", "valid-reset-token", "NewPassword123!").
+					Return(hashedPassword, "user-id-123", nil).Once()
+				d.userRepo.On("GetByID", "user-id-123").Return(&domain.User{
+					ID:             "user-id-123",
 					HashedPassword: "old-hashed-password",
 				}, nil)
-				deps.userRepo.On("Update", mock.AnythingOfType("*domain.User")).Run(func(args mock.Arguments) {
-					user := args.Get(0).(*domain.User)
-					// Verify the password was hashed
-					err := bcrypt.CompareHashAndPassword([]byte(user.HashedPassword), []byte("NewPassword123!"))
-					assert.NoError(t, err, "password should be hashed")
-				}).Return(nil)
+				d.userRepo.On("Update", mock.AnythingOfType("*domain.User")).
+					Run(func(args mock.Arguments) {
+						user := args.Get(0).(*domain.User)
+						assert.Equal(t, hashedPassword, user.HashedPassword)
+					}).
+					Return(nil).Once()
 			},
 			after: func(t *testing.T, deps *testDeps) {
-				deps.authRepo.AssertExpectations(t)
-				deps.userRepo.AssertExpectations(t)
+				deps.identityProvider.AssertExpectations(t)
 			},
 			wantErr: false,
 		},
 		{
 			name: "ResetPassword_InvalidToken",
 			deps: dependencies{
-				authRepo: new(mocks.MockAuthRepository),
+				identityProvider: new(mocks.MockIdentityService),
 			},
 			args: args{
-				token:      "invalid-reset-token",
+				token:       "invalid-reset-token",
 				newPassword: "NewPassword123!",
 			},
 			before: func(deps *testDeps) {
-				deps.authRepo.On("GetUserIDByResetToken", "invalid-reset-token").Return("", errors.New("token not found"))
+				deps.identityProvider.On("ResetPassword", "invalid-reset-token", "NewPassword123!").
+					Return("", "", cerrors.NewError(cerrors.ErrorTypeInvalidInput, "invalid or expired token", nil)).Once()
+				deps.logger.On("Infof", mock.Anything, mock.Anything).Maybe()
 			},
 			after: func(t *testing.T, deps *testDeps) {
-				deps.authRepo.AssertExpectations(t)
+				deps.identityProvider.AssertExpectations(t)
 			},
 			wantErr:   true,
 			errorType: cerrors.ErrorTypeInvalidInput,
@@ -348,12 +371,12 @@ func TestAccountService_ChangePassword(t *testing.T) {
 	}
 
 	tests := []struct {
-		name     string
-		deps     dependencies
-		args     args
-		before   func(deps *testDeps)
-		after    func(t *testing.T, deps *testDeps)
-		wantErr  bool
+		name      string
+		deps      dependencies
+		args      args
+		before    func(deps *testDeps)
+		after     func(t *testing.T, deps *testDeps)
+		wantErr   bool
 		errorType cerrors.ErrorType
 	}{
 		{
@@ -373,16 +396,19 @@ func TestAccountService_ChangePassword(t *testing.T) {
 				hashedOldPassword, _ := bcrypt.GenerateFromPassword([]byte(oldPassword), bcrypt.MinCost)
 
 				// Setup expectations with fresh hash
+				hashedNewPassword := "hashed-new-password-123"
 				user := &domain.User{
 					ID:             userID,
 					Email:          "test@example.com",
 					HashedPassword: string(hashedOldPassword),
 				}
 				deps.userRepo.On("GetByID", userID).Return(user, nil)
+				deps.identityProvider.On("ChangePassword", userID, oldPassword, "NewPassword123!").
+					Return(hashedNewPassword, nil).Once()
 				deps.userRepo.On("Update", mock.MatchedBy(func(u *domain.User) bool {
 					// Check that the password was updated
-					return u.ID == userID && u.HashedPassword != string(hashedOldPassword)
-				})).Return(nil)
+					return u.ID == userID && u.HashedPassword == hashedNewPassword
+				})).Return(nil).Once()
 			},
 			after: func(t *testing.T, deps *testDeps) {
 				// Verify all expectations were met
@@ -412,6 +438,9 @@ func TestAccountService_ChangePassword(t *testing.T) {
 					HashedPassword: string(hashedOldPassword),
 				}
 				deps.userRepo.On("GetByID", userID).Return(user, nil)
+				err := errors.New("invalid current password")
+				deps.identityProvider.On("ChangePassword", userID, "WrongOldPassword123!", "NewPassword123!").
+					Return("", err).Once()
 			},
 			after: func(t *testing.T, deps *testDeps) {
 				deps.userRepo.AssertExpectations(t)

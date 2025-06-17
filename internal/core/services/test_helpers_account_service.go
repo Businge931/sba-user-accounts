@@ -31,20 +31,24 @@ type InvalidInputError struct {
 
 
 type testDeps struct {
-	userRepo  *mocks.MockUserRepository
-	authRepo  *mocks.MockAuthRepository
-	tokenSvc  *mocks.MockTokenService
-	logger    *mocks.MockLogger
-	validator *validation.Validator
+	userRepo         *mocks.MockUserRepository
+	authRepo         *mocks.MockAuthRepository
+	tokenSvc         *mocks.MockTokenService
+	logger           *mocks.MockLogger
+	validator        *validation.Validator
+	identityProvider *mocks.MockIdentityService
+	emailSvc         *mocks.MockEmailService
 }
 
 func setUpTestDeps() *testDeps {
 	return &testDeps{
-		userRepo:  new(mocks.MockUserRepository),
-		authRepo:  new(mocks.MockAuthRepository),
-		tokenSvc:  new(mocks.MockTokenService),
-		logger:    new(mocks.MockLogger),
-		validator: validation.NewValidator(),
+		userRepo:         new(mocks.MockUserRepository),
+		authRepo:         new(mocks.MockAuthRepository),
+		tokenSvc:         new(mocks.MockTokenService),
+		logger:           new(mocks.MockLogger),
+		validator:        validation.NewValidator(),
+		identityProvider: new(mocks.MockIdentityService),
+		emailSvc:         new(mocks.MockEmailService),
 	}
 }
 
@@ -61,12 +65,13 @@ func setupLoggerExpectations(logger *mocks.MockLogger) {
 
 func newTestAccountService(deps *testDeps) *accountManagementService {
 	return &accountManagementService{
-		userRepo:  deps.userRepo,
-		authRepo:  deps.authRepo,
-		tokenSvc:  deps.tokenSvc,
-		emailSvc:  nil, // No email service for tests
-		validator: deps.validator,
-		logger:    deps.logger,
+		userRepo:         deps.userRepo,
+		authRepo:         deps.authRepo,
+		tokenSvc:         deps.tokenSvc,
+		emailSvc:         deps.emailSvc,
+		validator:        deps.validator,
+		logger:           deps.logger,
+		identityProvider: deps.identityProvider,
 	}
 }
 
