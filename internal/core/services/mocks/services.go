@@ -71,34 +71,34 @@ func (m *MockAuthService) Login(req domain.LoginRequest) (string, error) {
 	return args.String(0), args.Error(1)
 }
 
-// MockAccountManagementService mocks the AccountManagementService interface for testing
-type MockAccountManagementService struct {
-	mock.Mock
-}
+// // MockAccountManagementService mocks the AccountManagementService interface for testing
+// type MockAccountManagementService struct {
+// 	mock.Mock
+// }
 
-// VerifyEmail mocks the VerifyEmail method
-func (m *MockAccountManagementService) VerifyEmail(token string) error {
-	args := m.Called(token)
-	return args.Error(0)
-}
+// // VerifyEmail mocks the VerifyEmail method
+// func (m *MockAccountManagementService) VerifyEmail(token string) error {
+// 	args := m.Called(token)
+// 	return args.Error(0)
+// }
 
-// RequestPasswordReset mocks the RequestPasswordReset method
-func (m *MockAccountManagementService) RequestPasswordReset(email string) error {
-	args := m.Called(email)
-	return args.Error(0)
-}
+// // RequestPasswordReset mocks the RequestPasswordReset method
+// func (m *MockAccountManagementService) RequestPasswordReset(email string) error {
+// 	args := m.Called(email)
+// 	return args.Error(0)
+// }
 
-// ResetPassword mocks the ResetPassword method
-func (m *MockAccountManagementService) ResetPassword(token, newPassword string) error {
-	args := m.Called(token, newPassword)
-	return args.Error(0)
-}
+// // ResetPassword mocks the ResetPassword method
+// func (m *MockAccountManagementService) ResetPassword(token, newPassword string) error {
+// 	args := m.Called(token, newPassword)
+// 	return args.Error(0)
+// }
 
-// ChangePassword mocks the ChangePassword method
-func (m *MockAccountManagementService) ChangePassword(userID, oldPassword, newPassword string) error {
-	args := m.Called(userID, oldPassword, newPassword)
-	return args.Error(0)
-}
+// // ChangePassword mocks the ChangePassword method
+// func (m *MockAccountManagementService) ChangePassword(userID, oldPassword, newPassword string) error {
+// 	args := m.Called(userID, oldPassword, newPassword)
+// 	return args.Error(0)
+// }
 
 // MockIdentityService mocks the IdentityService interface for testing
 type MockIdentityService struct {
