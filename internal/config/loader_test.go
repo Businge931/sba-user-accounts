@@ -9,41 +9,77 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+type testCase struct {
+	name      string
+	before     func(t *testing.T)
+	after     func(t *testing.T)
+	expect    func(t *testing.T, cfg *Config)
+}
 
+func TestLoader(t *testing.T) {
+	defaultConfig := &Config{
+		DB: DBConfig{
+			Host:     "localhost",
+			Port:     "5432",
+			User:     "admin",
+			Password: "adminpassword",
+			Name:     "sba_users",
+		},
+		Auth: AuthConfig{
+			JWTSecret:      []byte("your-secret-key"),
+			TokenExpiryMin: 60 * time.Minute,
+		},
+		Server: ServerConfig{
+			GRPCPort: "50051",
+		},
+	}
 
-func TestLoad(t *testing.T) {
-	tests := []struct {
-		name     string
-		envVars  map[string]string
-		validate func(t *testing.T, cfg *Config)
-	}{
+	tests := []testCase{
 		{
 			name: "load with default values",
-			envVars: map[string]string{},
-			validate: func(t *testing.T, cfg *Config) {
-				assert.Equal(t, "localhost", cfg.DB.Host)
-				assert.Equal(t, "5432", cfg.DB.Port)
-				assert.Equal(t, "admin", cfg.DB.User)
-				assert.Equal(t, "adminpassword", cfg.DB.Password)
-				assert.Equal(t, "sba_users", cfg.DB.Name)
-				assert.Equal(t, []byte("your-secret-key"), cfg.Auth.JWTSecret)
-				assert.Equal(t, 60*time.Minute, cfg.Auth.TokenExpiryMin)
-				assert.Equal(t, "50051", cfg.Server.GRPCPort)
+			before: func(t *testing.T) {
+				// No environment variables set
+			},
+			after: func(t *testing.T) {
+				// Clean up any environment variables that might have been set
+				for _, k := range []string{
+					"DB_HOST", "DB_PORT", "DB_USER", "DB_PASSWORD", "DB_NAME",
+					"JWT_SECRET", "TOKEN_EXPIRY_MIN", "GRPC_PORT",
+				} {
+					os.Unsetenv(k)
+				}
+			},
+			expect: func(t *testing.T, cfg *Config) {
+				assert.Equal(t, defaultConfig, cfg)
 			},
 		},
 		{
 			name: "load with custom values",
-			envVars: map[string]string{
-				"DB_HOST":          "custom_host",
-				"DB_PORT":          "5433",
-				"DB_USER":          "custom_user",
-				"DB_PASSWORD":      "custom_password",
-				"DB_NAME":          "custom_db",
-				"JWT_SECRET":       "custom_secret_key",
-				"TOKEN_EXPIRY_MIN": "120",
-				"GRPC_PORT":        "50052",
+			before: func(t *testing.T) {
+				envVars := map[string]string{
+					"DB_HOST":          "custom_host",
+					"DB_PORT":          "5433",
+					"DB_USER":          "custom_user",
+					"DB_PASSWORD":      "custom_password",
+					"DB_NAME":          "custom_db",
+					"JWT_SECRET":       "custom_secret_key",
+					"TOKEN_EXPIRY_MIN": "120",
+					"GRPC_PORT":        "50052",
+				}
+				for k, v := range envVars {
+					os.Setenv(k, v)
+				}
 			},
-			validate: func(t *testing.T, cfg *Config) {
+			after: func(t *testing.T) {
+				// Clean up environment variables
+				for _, k := range []string{
+					"DB_HOST", "DB_PORT", "DB_USER", "DB_PASSWORD", "DB_NAME",
+					"JWT_SECRET", "TOKEN_EXPIRY_MIN", "GRPC_PORT",
+				} {
+					os.Unsetenv(k)
+				}
+			},
+			expect: func(t *testing.T, cfg *Config) {
 				assert.Equal(t, "custom_host", cfg.DB.Host)
 				assert.Equal(t, "5433", cfg.DB.Port)
 				assert.Equal(t, "custom_user", cfg.DB.User)
@@ -54,38 +90,41 @@ func TestLoad(t *testing.T) {
 				assert.Equal(t, "50052", cfg.Server.GRPCPort)
 			},
 		},
+		{
+			name: "load with invalid token expiry",
+			before: func(t *testing.T) {
+				os.Setenv("TOKEN_EXPIRY_MIN", "invalid")
+			},
+			after: func(t *testing.T) {
+				os.Unsetenv("TOKEN_EXPIRY_MIN")
+			},
+			expect: func(t *testing.T, cfg *Config) {
+				// Should use default value when invalid
+				assert.Equal(t, 60*time.Minute, cfg.Auth.TokenExpiryMin)
+			},
+		},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// Set up environment variables
-			for k, v := range tt.envVars {
-				os.Setenv(k, v)
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			// before
+			if tc.before != nil {
+				tc.before(t)
 			}
-			// Clean up environment variables after test
-			defer func() {
-				for k := range tt.envVars {
-					os.Unsetenv(k)
-				}
-			}()
+
+			// Ensure cleanup runs even if test fails
+			if tc.after != nil {
+				defer tc.after(t)
+			}
 
 			// Execute
 			cfg := Load()
 
 			// Validate
-			require.NotNil(t, cfg)
-			tt.validate(t, cfg)
+			require.NotNil(t, cfg, "Config should not be nil")
+			if tc.expect != nil {
+				tc.expect(t, cfg)
+			}
 		})
 	}
-}
-
-func TestLoad_InvalidTokenExpiry(t *testing.T) {
-	// Set up environment with invalid TOKEN_EXPIRY_MIN
-	os.Setenv("TOKEN_EXPIRY_MIN", "invalid")
-	defer os.Unsetenv("TOKEN_EXPIRY_MIN")
-
-	// Should not panic and should use default value
-	cfg := Load()
-	require.NotNil(t, cfg)
-	assert.Equal(t, 60*time.Minute, cfg.Auth.TokenExpiryMin)
 }
