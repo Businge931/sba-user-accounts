@@ -69,7 +69,7 @@ func (f *ServiceFactory) GetAuthService() ports.AuthService {
 
 // GetAccountManagementService returns the account management service
 func (f *ServiceFactory) GetAccountManagementService() ports.AccountManagementService {
-	return services.NewAccountManagementService(f.userRepo, f.authRepo, f.tokenSvc, f.emailSvc, f.validator, f.logger)
+	return services.NewAccountManagementService(f.userRepo, f.authRepo, f.tokenSvc, f.emailSvc, f.validator, f.logger, f.indentityProvider)
 }
 
 // GetTokenService returns the token service
