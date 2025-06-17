@@ -1,7 +1,7 @@
 package services
 
 import (
-	"golang.org/x/crypto/bcrypt"
+	"strings"
 
 	"github.com/Businge931/sba-user-accounts/internal/core/errors"
 	"github.com/Businge931/sba-user-accounts/internal/core/ports"
@@ -9,15 +9,15 @@ import (
 
 // accountManagementService implements the AccountManagementService interface
 type accountManagementService struct {
-	userRepo  ports.UserRepository
-	authRepo  ports.AuthRepository
-	tokenSvc  ports.TokenService
-	emailSvc  ports.EmailService
-	validator ports.ValidationService
-	logger    ports.Logger
+	userRepo         ports.UserRepository
+	authRepo         ports.AuthRepository
+	tokenSvc         ports.TokenService
+	emailSvc         ports.EmailService
+	validator        ports.ValidationService
+	logger           ports.Logger
+	identityProvider ports.IdentityService
 }
 
-// NewAccountManagementService creates a new instance of account management service
 func NewAccountManagementService(
 	userRepo ports.UserRepository,
 	authRepo ports.AuthRepository,
@@ -25,26 +25,28 @@ func NewAccountManagementService(
 	emailSvc ports.EmailService,
 	validator ports.ValidationService,
 	logger ports.Logger,
+	identityProvider ports.IdentityService,
 ) ports.AccountManagementService {
 	return &accountManagementService{
-		userRepo:  userRepo,
-		authRepo:  authRepo,
-		tokenSvc:  tokenSvc,
-		emailSvc:  emailSvc,
-		validator: validator,
-		logger:    logger,
+		userRepo:         userRepo,
+		authRepo:         authRepo,
+		tokenSvc:         tokenSvc,
+		emailSvc:         emailSvc,
+		validator:        validator,
+		logger:           logger,
+		identityProvider: identityProvider,
 	}
 }
 
 // VerifyEmail verifies a user's email using a token
 func (svc *accountManagementService) VerifyEmail(token string) error {
-	svc.logger.Infof("Verifying email with token: %s", token)
-	userID, err := svc.authRepo.GetUserIDByVerificationToken(token)
+	// verify email with provider
+	userID, err := svc.identityProvider.VerifyEmail(token)
 	if err != nil {
-		svc.logger.Warnf("Email verification failed: %v", err)
-		return errors.NewInvalidInputError("invalid or expired token", err)
+		return err
 	}
 
+	// verify user exists
 	user, err := svc.userRepo.GetByID(userID)
 	if err != nil {
 		return err
@@ -62,18 +64,16 @@ func (svc *accountManagementService) RequestPasswordReset(email string) error {
 	}
 
 	svc.logger.Infof("Password reset requested for email: %s", email)
-	user, err := svc.userRepo.GetByEmail(email)
+
+	token, err := svc.identityProvider.RequestPasswordReset(email)
 	if err != nil {
-		// Don't reveal if email exists, but log it
-		svc.logger.Infof("Password reset attempted for non-existent email: %s", email)
-		// Return success anyway for security reasons - don't leak user existence
-		return svc.handleNonExistentUserReset()
+		svc.logger.Errorf("Failed to process password reset: %v", err)
+		return errors.NewInternalError("failed to process password reset", err)
 	}
 
-	token := svc.tokenSvc.GenerateResetToken()
-	if err := svc.authRepo.StoreResetToken(user.ID, token); err != nil {
-		svc.logger.Errorf("Failed to store reset token: %v", err)
-		return errors.NewInternalError("failed to process password reset", err)
+	// If token is empty, it means user doesn't exist, but we don't reveal this
+	if token == "" {
+		return nil
 	}
 
 	if svc.emailSvc != nil {
@@ -81,42 +81,6 @@ func (svc *accountManagementService) RequestPasswordReset(email string) error {
 	}
 
 	return nil
-}
-
-// handleNonExistentUserReset handles password reset requests for non-existent users
-// We return nil to avoid leaking user existence information, but do this in a separate
-// method to satisfy the linter that we're deliberately ignoring the error
-func (svc *accountManagementService) handleNonExistentUserReset() error {
-	// Pretend the operation was successful for security reasons
-	return nil
-}
-
-// ResetPassword resets a user's password using a token
-func (svc *accountManagementService) ResetPassword(token, newPassword string) error {
-	// Validate password
-	if err := svc.validator.ValidatePassword(newPassword); err != nil {
-		return err
-	}
-
-	svc.logger.Infof("Attempting password reset with token")
-	userID, err := svc.authRepo.GetUserIDByResetToken(token)
-	if err != nil {
-		svc.logger.Warnf("Password reset failed due to invalid token: %v", err)
-		return errors.NewInvalidInputError("invalid or expired token", err)
-	}
-
-	user, err := svc.userRepo.GetByID(userID)
-	if err != nil {
-		return err
-	}
-
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
-	if err != nil {
-		return err
-	}
-
-	user.HashedPassword = string(hashedPassword)
-	return svc.userRepo.Update(user)
 }
 
 // ChangePassword changes a user's password
@@ -133,12 +97,34 @@ func (svc *accountManagementService) ChangePassword(userID, oldPassword, newPass
 		return errors.NewNotFoundError("user not found", err)
 	}
 
-	if validateErr := bcrypt.CompareHashAndPassword([]byte(user.HashedPassword), []byte(oldPassword)); validateErr != nil {
-		svc.logger.Warnf("Password change failed due to invalid current password")
-		return errors.NewInvalidAuthError("invalid current password", validateErr)
+	hashedPassword, err := svc.identityProvider.ChangePassword(userID, oldPassword, newPassword)
+	if err != nil {
+		// Check if it's an invalid password error
+		if strings.Contains(err.Error(), "invalid current password") {
+			return errors.NewInvalidAuthError("invalid current password", err)
+		}
+		return err
 	}
 
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
+	user.HashedPassword = string(hashedPassword)
+	return svc.userRepo.Update(user)
+}
+
+// ResetPassword resets a user's password using a token
+func (svc *accountManagementService) ResetPassword(token, newPassword string) error {
+	// Validate password
+	if err := svc.validator.ValidatePassword(newPassword); err != nil {
+		return err
+	}
+
+	svc.logger.Infof("Attempting password reset with token")
+
+	hashedPassword, userID, err := svc.identityProvider.ResetPassword(token, newPassword)
+	if err != nil {
+		return err
+	}
+
+	user, err := svc.userRepo.GetByID(userID)
 	if err != nil {
 		return err
 	}
