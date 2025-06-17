@@ -39,20 +39,11 @@ func AuthServiceSetupMockLogger(logger *mocks.MockLogger) {
 	logger.On("Errorf", mock.Anything, mock.Anything).Return()
 }
 
-// resetMocks resets all mock expectations before each test case
-func (d *TestDependencies) resetMocks() {
-	d.userRepo.ExpectedCalls = nil
-	d.authRepo.ExpectedCalls = nil
-	d.tokenSvc.ExpectedCalls = nil
-	d.identitySvc.ExpectedCalls = nil
-	d.logger.ExpectedCalls = nil
-}
-
 func newTestAuthService(deps *TestDependencies) *authService {
 	return &authService{
 		userRepo:         deps.userRepo,
 		validator:        deps.validator,
 		logger:           deps.logger,
-		identityProvider: deps.identitySvc,
+		
 	}
 }
