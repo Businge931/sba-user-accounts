@@ -35,5 +35,9 @@ type (
 	IdentityService interface {
 		Register(req domain.RegisterRequest) (*domain.User, error)
 		Login(req domain.LoginRequest, user *domain.User) (string, error)
+		ResetPassword(token string, newPassword string) (string,string, error)
+		ChangePassword(userID string, oldPassword, newPassword string) (string, error)
+		VerifyEmail(token string) (string, error)
+		RequestPasswordReset(email string) (string, error)
 	}
 )
