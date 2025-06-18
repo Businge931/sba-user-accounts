@@ -33,11 +33,11 @@ type (
 		ValidateName(name, fieldName string) error
 	}
 	IdentityService interface {
-		Register(req domain.RegisterRequest) (*domain.User, error)
-		Login(req domain.LoginRequest, user *domain.User) (string, error)
-		ResetPassword(token string, newPassword string) (string,string, error)
-		ChangePassword(userID string, oldPassword, newPassword string) (string, error)
-		VerifyEmail(token string) (string, error)
-		RequestPasswordReset(email string) (string, error)
+		RegisterSvc(req domain.RegisterRequest) (*domain.User, error)
+		LoginSvc(req domain.LoginRequest, user *domain.User) (string, error)
+		ResetPasswordSvc(token string, newPassword string) (string,string, error)
+		ChangePasswordSvc(userID string, oldPassword, newPassword string) (string, error)
+		VerifyEmailSvc(token string) (string, error)
+		RequestPasswordResetSvc(email string) (string, error)
 	}
 )
