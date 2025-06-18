@@ -41,7 +41,7 @@ func NewAccountManagementService(
 // VerifyEmail verifies a user's email using a token
 func (svc *accountManagementService) VerifyEmail(token string) error {
 	// verify email with provider
-	userID, err := svc.identityProvider.VerifyEmail(token)
+	userID, err := svc.identityProvider.VerifyEmailSvc(token)
 	if err != nil {
 		return err
 	}
@@ -65,7 +65,7 @@ func (svc *accountManagementService) RequestPasswordReset(email string) error {
 
 	svc.logger.Infof("Password reset requested for email: %s", email)
 
-	token, err := svc.identityProvider.RequestPasswordReset(email)
+	token, err := svc.identityProvider.RequestPasswordResetSvc(email)
 	if err != nil {
 		svc.logger.Errorf("Failed to process password reset: %v", err)
 		return errors.NewInternalError("failed to process password reset", err)
@@ -97,7 +97,7 @@ func (svc *accountManagementService) ChangePassword(userID, oldPassword, newPass
 		return errors.NewNotFoundError("user not found", err)
 	}
 
-	hashedPassword, err := svc.identityProvider.ChangePassword(userID, oldPassword, newPassword)
+	hashedPassword, err := svc.identityProvider.ChangePasswordSvc(userID, oldPassword, newPassword)
 	if err != nil {
 		// Check if it's an invalid password error
 		if strings.Contains(err.Error(), "invalid current password") {
@@ -119,7 +119,7 @@ func (svc *accountManagementService) ResetPassword(token, newPassword string) er
 
 	svc.logger.Infof("Attempting password reset with token")
 
-	hashedPassword, userID, err := svc.identityProvider.ResetPassword(token, newPassword)
+	hashedPassword, userID, err := svc.identityProvider.ResetPasswordSvc(token, newPassword)
 	if err != nil {
 		return err
 	}
