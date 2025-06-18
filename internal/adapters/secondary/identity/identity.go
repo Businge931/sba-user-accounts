@@ -31,7 +31,7 @@ func NewIdentityProvider(
 	}
 }
 
-func (svc *identityProvider) Register(req domain.RegisterRequest) (*domain.User, error) {
+func (svc *identityProvider) RegisterSvc(req domain.RegisterRequest) (*domain.User, error) {
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
 	if err != nil {
 		return nil, fmt.Errorf("failed to hash password: %w", err)
@@ -52,7 +52,7 @@ func (svc *identityProvider) Register(req domain.RegisterRequest) (*domain.User,
 	return user, nil
 }
 
-func (svc *identityProvider) Login(req domain.LoginRequest, user *domain.User) (string, error) {
+func (svc *identityProvider) LoginSvc(req domain.LoginRequest, user *domain.User) (string, error) {
 	if user == nil {
 		return "", fmt.Errorf("user not found")
 	}
@@ -73,8 +73,14 @@ func (svc *identityProvider) Login(req domain.LoginRequest, user *domain.User) (
 	return token, nil
 }
 
-func (svc *identityProvider) VerifyEmail(token string) (string, error) {
+func (svc *identityProvider) VerifyEmailSvc(token string) (string, error) {
 	svc.logger.Infof("Verifying email with token: %s", token)
+	if token == "" {
+		err := fmt.Errorf("empty token")
+		svc.logger.Warnf("Email verification failed: %v", err)
+		return "", errors.NewInvalidInputError("invalid or expired token", err)
+	}
+
 	userID, err := svc.authRepo.GetUserIDByVerificationToken(token)
 	if err != nil {
 		svc.logger.Warnf("Email verification failed: %v", err)
@@ -83,7 +89,7 @@ func (svc *identityProvider) VerifyEmail(token string) (string, error) {
 	return userID, nil
 }
 
-func (svc *identityProvider) RequestPasswordReset(email string) (string, error) {
+func (svc *identityProvider) RequestPasswordResetSvc(email string) (string, error) {
 	token := svc.tokenSvc.GenerateResetToken()
 
 	user, err := svc.userRepo.GetByEmail(email)
@@ -102,7 +108,7 @@ func (svc *identityProvider) RequestPasswordReset(email string) (string, error) 
 	return token, nil
 }
 
-func (svc *identityProvider) ChangePassword(userID string, oldPassword, newPassword string) (string, error) {
+func (svc *identityProvider) ChangePasswordSvc(userID string, oldPassword, newPassword string) (string, error) {
 	// Get user to access current password hash
 	user, err := svc.userRepo.GetByID(userID)
 	if err != nil {
@@ -125,19 +131,28 @@ func (svc *identityProvider) ChangePassword(userID string, oldPassword, newPassw
 	return string(hashedPassword), nil
 
 }
-func (svc *identityProvider) ResetPassword(token string, newPassword string) (string, string, error) {
+// hashPassword is a helper function that can be overridden in tests
+var hashPassword = func(password string) (string, error) {
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return "", err
+	}
+	return string(hash), nil
+}
+
+func (svc *identityProvider) ResetPasswordSvc(token string, newPassword string) (string, string, error) {
 	userID, err := svc.authRepo.GetUserIDByResetToken(token)
 	if err != nil {
 		svc.logger.Warnf("Password reset failed due to invalid token: %v", err)
 		return "", "", errors.NewInvalidInputError("invalid or expired token", err)
 	}
 	// Hash new password
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
+	hashedPassword, err := hashPassword(newPassword)
 	if err != nil {
 		return "", "", fmt.Errorf("failed to hash password: %w", err)
 	}
 
-	return string(hashedPassword), userID, nil
+	return hashedPassword, userID, nil
 }
 
 // handleNonExistentUserReset handles password reset requests for non-existent users
