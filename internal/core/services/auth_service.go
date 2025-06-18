@@ -47,7 +47,7 @@ func (svc *authService) Register(req domain.RegisterRequest) (*domain.User, erro
 	}
 
 	// Register user using identity provider
-	user, err := svc.identityProvider.Register(req)
+	user, err := svc.identityProvider.RegisterSvc(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to register user,%w", err)
 	}
@@ -74,7 +74,7 @@ func (svc *authService) Login(req domain.LoginRequest) (string, error) {
 		return "", errors.NewNotFoundError("user not found", err)
 	}
 
-	token, err := svc.identityProvider.Login(req, user)
+	token, err := svc.identityProvider.LoginSvc(req, user)
 	if err != nil {
 		return "", err
 	}
