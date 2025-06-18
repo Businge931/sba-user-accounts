@@ -37,22 +37,38 @@ type TestExpectations struct {
 	code     codes.Code
 }
 
+// registerTestDeps contains test dependencies for register handler tests
+type registerTestDeps struct {
+	authService  *mocks.MockAuthService
+	tokenService *mocks.MockTokenService
+	logger       *mocks.MockLogger
+}
+
+// registerTestArgs contains input arguments for register handler tests
+type registerTestArgs struct {
+	ctx     context.Context
+	request *pb.RegisterRequest
+}
+
+// registerTestCase represents a test case for the register handler
+type registerTestCase struct {
+	name   string
+	deps   registerTestDeps
+	args   registerTestArgs
+	before func(*testing.T, *registerTestDeps, registerTestArgs) (*grpc.AuthServer, *pb.RegisterResponse, error)
+	after  func(*testing.T, *registerTestDeps, *pb.RegisterResponse, error)
+}
+
 func TestAuthServer_Register(t *testing.T) {
-	testCases := []struct {
-		name     string
-		deps     TestDependencies
-		args     TestArgs
-		before   func(deps TestDependencies)
-		expected TestExpectations
-	}{
+	tests := []registerTestCase{
 		{
-			name: "Register_Success",
-			deps: TestDependencies{
+			name: "successful registration",
+			deps: registerTestDeps{
 				authService:  new(mocks.MockAuthService),
 				tokenService: new(mocks.MockTokenService),
 				logger:       new(mocks.MockLogger),
 			},
-			args: TestArgs{
+			args: registerTestArgs{
 				ctx: context.Background(),
 				request: &pb.RegisterRequest{
 					Email:     "test@example.com",
@@ -61,8 +77,8 @@ func TestAuthServer_Register(t *testing.T) {
 					LastName:  "User",
 				},
 			},
-			before: func(deps TestDependencies) {
-				deps.authService.On("Register", mock.MatchedBy(func(req domain.RegisterRequest) bool {
+			before: func(t *testing.T, d *registerTestDeps, args registerTestArgs) (*grpc.AuthServer, *pb.RegisterResponse, error) {
+				d.authService.On("Register", mock.MatchedBy(func(req domain.RegisterRequest) bool {
 					return req.Email == "test@example.com" &&
 						req.Password == "Password123!" &&
 						req.FirstName == "Test" &&
@@ -74,23 +90,33 @@ func TestAuthServer_Register(t *testing.T) {
 					LastName:        "User",
 					IsEmailVerified: false,
 				}, nil)
+
+				server := &grpc.AuthServer{
+					AuthService:  d.authService,
+					TokenService: d.tokenService,
+					Logger:       d.logger,
+				}
+
+				return server, nil, nil
 			},
-			expected: TestExpectations{
-				response: &pb.RegisterResponse{
-					Success: true,
-					Message: "User registered successfully. Please check your email to verify your account.",
-				},
-				error: false,
+			after: func(t *testing.T, d *registerTestDeps, resp *pb.RegisterResponse, err error) {
+				d.authService.AssertExpectations(t)
+				d.tokenService.AssertExpectations(t)
+				d.logger.AssertExpectations(t)
+
+				assert.NoError(t, err)
+				assert.Equal(t, true, resp.Success)
+				assert.Contains(t, resp.Message, "User registered successfully")
 			},
 		},
 		{
-			name: "Register_MissingFields",
-			deps: TestDependencies{
+			name: "missing required fields",
+			deps: registerTestDeps{
 				authService:  new(mocks.MockAuthService),
 				tokenService: new(mocks.MockTokenService),
 				logger:       new(mocks.MockLogger),
 			},
-			args: TestArgs{
+			args: registerTestArgs{
 				ctx: context.Background(),
 				request: &pb.RegisterRequest{
 					Email:     "",
@@ -99,23 +125,34 @@ func TestAuthServer_Register(t *testing.T) {
 					LastName:  "",
 				},
 			},
-			before: func(deps TestDependencies) {
-				// No expectations needed as validation happens before service call
+			before: func(t *testing.T, d *registerTestDeps, args registerTestArgs) (*grpc.AuthServer, *pb.RegisterResponse, error) {
+				server := &grpc.AuthServer{
+					AuthService:  d.authService,
+					TokenService: d.tokenService,
+					Logger:       d.logger,
+				}
+
+				return server, nil, nil
 			},
-			expected: TestExpectations{
-				error:    true,
-				errorMsg: "missing required fields: email, password, first_name, and last_name are required",
-				code:     codes.InvalidArgument,
+			after: func(t *testing.T, d *registerTestDeps, resp *pb.RegisterResponse, err error) {
+				d.authService.AssertNotCalled(t, "Register", mock.Anything)
+				assert.Error(t, err)
+				assert.Nil(t, resp)
+
+				st, ok := status.FromError(err)
+				assert.True(t, ok)
+				assert.Equal(t, codes.InvalidArgument, st.Code())
+				assert.Contains(t, st.Message(), "missing required fields")
 			},
 		},
 		{
-			name: "Register_ServiceError",
-			deps: TestDependencies{
+			name: "service error during registration",
+			deps: registerTestDeps{
 				authService:  new(mocks.MockAuthService),
 				tokenService: new(mocks.MockTokenService),
 				logger:       new(mocks.MockLogger),
 			},
-			args: TestArgs{
+			args: registerTestArgs{
 				ctx: context.Background(),
 				request: &pb.RegisterRequest{
 					Email:     "existing@example.com",
@@ -124,210 +161,236 @@ func TestAuthServer_Register(t *testing.T) {
 					LastName:  "User",
 				},
 			},
-			before: func(deps TestDependencies) {
-				deps.authService.On("Register", mock.MatchedBy(func(req domain.RegisterRequest) bool {
-					return req.Email == "existing@example.com" &&
-						req.Password == "Password123!" &&
-						req.FirstName == "Existing" &&
-						req.LastName == "User"
+			before: func(t *testing.T, d *registerTestDeps, args registerTestArgs) (*grpc.AuthServer, *pb.RegisterResponse, error) {
+				d.authService.On("Register", mock.MatchedBy(func(req domain.RegisterRequest) bool {
+					return req.Email == "existing@example.com"
 				})).Return(nil, errors.New("user already exists"))
-				deps.logger.On("Errorf", mock.Anything, mock.Anything).Maybe()
-				deps.logger.On("Infof", mock.Anything, mock.Anything, mock.Anything).Maybe()
+
+				d.logger.On("Errorf", mock.Anything, mock.Anything).Maybe()
+
+				server := &grpc.AuthServer{
+					AuthService:  d.authService,
+					TokenService: d.tokenService,
+					Logger:       d.logger,
+				}
+
+				return server, nil, nil
 			},
-			expected: TestExpectations{
-				error:    true,
-				errorMsg: "Failed to register user",
-				code:     codes.Internal,
+			after: func(t *testing.T, d *registerTestDeps, resp *pb.RegisterResponse, err error) {
+				d.authService.AssertExpectations(t)
+				d.logger.AssertExpectations(t)
+
+				assert.Error(t, err)
+				assert.Nil(t, resp)
+
+				st, ok := status.FromError(err)
+				assert.True(t, ok)
+				assert.Equal(t, codes.Internal, st.Code())
 			},
 		},
 	}
 
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			// Setup
-			server := &grpc.AuthServer{
-				AuthService:  tc.deps.authService,
-				TokenService: tc.deps.tokenService,
-				Logger:       tc.deps.logger,
-			}
-
-			// Set up expectations
-			if tc.before != nil {
-				tc.before(tc.deps)
-			}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Setup test
+			server, _, _ := tt.before(t, &tt.deps, tt.args)
 
 			// Execute
-			resp, err := server.Register(tc.args.ctx, tc.args.request.(*pb.RegisterRequest))
+			resp, err := server.Register(tt.args.ctx, tt.args.request)
 
 			// Verify
-			if tc.expected.error {
-				assert.Error(t, err)
-				st, ok := status.FromError(err)
-				assert.True(t, ok)
-				assert.Equal(t, tc.expected.code, st.Code())
-				assert.Contains(t, st.Message(), tc.expected.errorMsg)
-			} else {
-				assert.NoError(t, err)
-				assert.Equal(t, tc.expected.response, resp)
-			}
-
-			// Verify all expectations were met
-			mock.AssertExpectationsForObjects(t,
-				tc.deps.authService,
-				tc.deps.tokenService,
-				tc.deps.logger)
+			tt.after(t, &tt.deps, resp, err)
 		})
 	}
 }
 
+// loginTestDeps contains test dependencies for login handler tests
+type loginTestDeps struct {
+	authService  *mocks.MockAuthService
+	tokenService *mocks.MockTokenService
+	logger       *mocks.MockLogger
+}
+
+// loginTestArgs contains input arguments for login handler tests
+type loginTestArgs struct {
+	ctx     context.Context
+	request *pb.LoginRequest
+}
+
+// loginTestCase represents a test case for the login handler
+type loginTestCase struct {
+	name   string
+	deps   loginTestDeps
+	args   loginTestArgs
+	before func(*testing.T, *loginTestDeps, loginTestArgs) (*grpc.AuthServer, *pb.LoginResponse, error)
+	after  func(*testing.T, *loginTestDeps, *pb.LoginResponse, error)
+}
+
 func TestAuthServer_Login(t *testing.T) {
-	testCases := []struct {
-		name     string
-		deps     TestDependencies
-		args     TestArgs
-		before   func(deps TestDependencies)
-		expected TestExpectations
-	}{
+	testCases := []loginTestCase{
 		{
 			name: "Login_Success",
-			deps: TestDependencies{
+			deps: loginTestDeps{
 				authService:  new(mocks.MockAuthService),
 				tokenService: new(mocks.MockTokenService),
 				logger:       new(mocks.MockLogger),
 			},
-			args: TestArgs{
+			args: loginTestArgs{
 				ctx: context.Background(),
 				request: &pb.LoginRequest{
 					Email:    "test@example.com",
 					Password: "Password123!",
 				},
 			},
-			before: func(deps TestDependencies) {
-				deps.authService.On("Login", mock.MatchedBy(func(req domain.LoginRequest) bool {
+			before: func(t *testing.T, d *loginTestDeps, _ loginTestArgs) (*grpc.AuthServer, *pb.LoginResponse, error) {
+				d.authService.On("Login", mock.MatchedBy(func(req domain.LoginRequest) bool {
 					return req.Email == "test@example.com" && req.Password == "Password123!"
 				})).Return("valid-jwt-token", nil)
-				deps.logger.On("Infof", mock.Anything, mock.Anything, mock.Anything).Maybe()
-			},
-			expected: TestExpectations{
-				response: &pb.LoginResponse{
+				d.logger.On("Infof", mock.Anything, mock.Anything, mock.Anything).Maybe()
+
+				server := &grpc.AuthServer{
+					AuthService:  d.authService,
+					TokenService: d.tokenService,
+					Logger:       d.logger,
+				}
+
+				return server, &pb.LoginResponse{
 					Success: true,
 					Token:   "valid-jwt-token",
 					Message: "Login successful",
-				},
-				error: false,
+				}, nil
+			},
+			after: func(t *testing.T, d *loginTestDeps, _ *pb.LoginResponse, _ error) {
+				d.authService.AssertExpectations(t)
+				d.tokenService.AssertExpectations(t)
+				d.logger.AssertExpectations(t)
 			},
 		},
 		{
 			name: "Login_MissingFields",
-			deps: TestDependencies{
+			deps: loginTestDeps{
 				authService:  new(mocks.MockAuthService),
 				tokenService: new(mocks.MockTokenService),
 				logger:       new(mocks.MockLogger),
 			},
-			args: TestArgs{
+			args: loginTestArgs{
 				ctx: context.Background(),
 				request: &pb.LoginRequest{
 					Email:    "",
 					Password: "",
 				},
 			},
-			before: func(deps TestDependencies) {
-				// No expectations needed as validation happens before service call
+			before: func(t *testing.T, d *loginTestDeps, _ loginTestArgs) (*grpc.AuthServer, *pb.LoginResponse, error) {
+				server := &grpc.AuthServer{
+					AuthService:  d.authService,
+					TokenService: d.tokenService,
+					Logger:       d.logger,
+				}
+				return server, nil, status.Error(codes.InvalidArgument, "Missing email or password")
 			},
-			expected: TestExpectations{
-				error:    true,
-				errorMsg: "Missing email or password",
-				code:     codes.InvalidArgument,
+			after: func(t *testing.T, d *loginTestDeps, _ *pb.LoginResponse, err error) {
+				assert.Error(t, err)
+				st, ok := status.FromError(err)
+				assert.True(t, ok)
+				assert.Equal(t, codes.InvalidArgument, st.Code())
+				assert.Contains(t, st.Message(), "Missing email or password")
 			},
 		},
 		{
 			name: "Login_UserNotFound",
-			deps: TestDependencies{
+			deps: loginTestDeps{
 				authService:  new(mocks.MockAuthService),
 				tokenService: new(mocks.MockTokenService),
 				logger:       new(mocks.MockLogger),
 			},
-			args: TestArgs{
+			args: loginTestArgs{
 				ctx: context.Background(),
 				request: &pb.LoginRequest{
 					Email:    "nonexistent@example.com",
 					Password: "Password123!",
 				},
 			},
-			before: func(deps TestDependencies) {
-				deps.authService.On("Login", mock.MatchedBy(func(req domain.LoginRequest) bool {
+			before: func(t *testing.T, d *loginTestDeps, args loginTestArgs) (*grpc.AuthServer, *pb.LoginResponse, error) {
+				d.authService.On("Login", mock.MatchedBy(func(req domain.LoginRequest) bool {
 					return req.Email == "nonexistent@example.com" && req.Password == "Password123!"
 				})).Return("", errors.New("USER_NOT_FOUND"))
-				deps.logger.On("Infof", mock.Anything, mock.Anything, mock.Anything).Once()
+				d.logger.On("Infof", mock.Anything, mock.Anything, mock.Anything).Once()
+
+				server := &grpc.AuthServer{
+					AuthService:  d.authService,
+					TokenService: d.tokenService,
+					Logger:       d.logger,
+				}
+
+				return server, nil, status.Error(codes.Internal, "An unexpected error occurred. Please try again later.")
 			},
-			expected: TestExpectations{
-				error:    true,
-				errorMsg: "An unexpected error occurred. Please try again later.",
-				code:     codes.Internal,
+			after: func(t *testing.T, d *loginTestDeps, _ *pb.LoginResponse, err error) {
+				assert.Error(t, err)
+				st, ok := status.FromError(err)
+				assert.True(t, ok)
+				assert.Equal(t, codes.Internal, st.Code())
+				assert.Contains(t, st.Message(), "An unexpected error occurred")
+				d.authService.AssertExpectations(t)
+				d.logger.AssertExpectations(t)
 			},
 		},
 		{
 			name: "Login_InvalidPassword",
-			deps: TestDependencies{
+			deps: loginTestDeps{
 				authService:  new(mocks.MockAuthService),
 				tokenService: new(mocks.MockTokenService),
 				logger:       new(mocks.MockLogger),
 			},
-			args: TestArgs{
+			args: loginTestArgs{
 				ctx: context.Background(),
 				request: &pb.LoginRequest{
 					Email:    "test@example.com",
 					Password: "WrongPassword!",
 				},
 			},
-			before: func(deps TestDependencies) {
-				deps.authService.On("Login", mock.MatchedBy(func(req domain.LoginRequest) bool {
+			before: func(t *testing.T, d *loginTestDeps, args loginTestArgs) (*grpc.AuthServer, *pb.LoginResponse, error) {
+				d.authService.On("Login", mock.MatchedBy(func(req domain.LoginRequest) bool {
 					return req.Email == "test@example.com" && req.Password == "WrongPassword!"
 				})).Return("", dcerrors.ErrInvalidAuth)
-				deps.logger.On("Infof", mock.Anything, mock.Anything, mock.Anything).Once()
+				d.logger.On("Infof", mock.Anything, mock.Anything, mock.Anything).Once()
+
+				server := &grpc.AuthServer{
+					AuthService:  d.authService,
+					TokenService: d.tokenService,
+					Logger:       d.logger,
+				}
+
+				return server, nil, status.Error(codes.Unauthenticated, "Incorrect username or password. Please try again.")
 			},
-			expected: TestExpectations{
-				error:    true,
-				errorMsg: "Incorrect username or password. Please try again.",
-				code:     codes.Unauthenticated,
+			after: func(t *testing.T, d *loginTestDeps, _ *pb.LoginResponse, err error) {
+				assert.Error(t, err)
+				st, ok := status.FromError(err)
+				assert.True(t, ok)
+				assert.Equal(t, codes.Unauthenticated, st.Code())
+				assert.Contains(t, st.Message(), "Incorrect username or password")
+				d.authService.AssertExpectations(t)
+				d.logger.AssertExpectations(t)
 			},
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			// Setup
-			server := &grpc.AuthServer{
-				AuthService:  tc.deps.authService,
-				TokenService: tc.deps.tokenService,
-				Logger:       tc.deps.logger,
-			}
-
-			// Set up expectations
-			if tc.before != nil {
-				tc.before(tc.deps)
-			}
-
-			// Execute
-			resp, err := server.Login(tc.args.ctx, tc.args.request.(*pb.LoginRequest))
+			// Setup and execute
+			server, want, wantErr := tc.before(t, &tc.deps, tc.args)
+			got, err := server.Login(tc.args.ctx, tc.args.request)
 
 			// Verify
-			if tc.expected.error {
+			if wantErr != nil {
 				assert.Error(t, err)
-				st, ok := status.FromError(err)
-				assert.True(t, ok)
-				assert.Equal(t, tc.expected.code, st.Code())
-				assert.Contains(t, st.Message(), tc.expected.errorMsg)
+				assert.Nil(t, got)
 			} else {
 				assert.NoError(t, err)
-				assert.Equal(t, tc.expected.response, resp)
+				assert.Equal(t, want, got)
 			}
 
-			// Verify all expectations were met
-			mock.AssertExpectationsForObjects(t,
-				tc.deps.authService,
-				tc.deps.tokenService,
-				tc.deps.logger)
+			// Custom verification
+			tc.after(t, &tc.deps, got, err)
 		})
 	}
 }
