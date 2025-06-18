@@ -65,10 +65,20 @@ func (m *MockAuthService) Register(req domain.RegisterRequest) (*domain.User, er
 	return args.Get(0).(*domain.User), args.Error(1)
 }
 
+// RegisterSvc is an alias for Register for backward compatibility
+func (m *MockAuthService) RegisterSvc(req domain.RegisterRequest) (*domain.User, error) {
+	return m.Register(req)
+}
+
 // Login mocks the Login method
 func (m *MockAuthService) Login(req domain.LoginRequest) (string, error) {
 	args := m.Called(req)
 	return args.String(0), args.Error(1)
+}
+
+// LoginSvc is an alias for Login for backward compatibility
+func (m *MockAuthService) LoginSvc(req domain.LoginRequest) (string, error) {
+	return m.Login(req)
 }
 
 // // MockAccountManagementService mocks the AccountManagementService interface for testing
@@ -106,7 +116,7 @@ type MockIdentityService struct {
 }
 
 // Register mocks the Register method
-func (m *MockIdentityService) Register(req domain.RegisterRequest) (*domain.User, error) {
+func (m *MockIdentityService) RegisterSvc(req domain.RegisterRequest) (*domain.User, error) {
 	args := m.Called(req)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
@@ -115,31 +125,31 @@ func (m *MockIdentityService) Register(req domain.RegisterRequest) (*domain.User
 }
 
 // Login mocks the Login method
-func (m *MockIdentityService) Login(req domain.LoginRequest, user *domain.User) (string, error) {
+func (m *MockIdentityService) LoginSvc(req domain.LoginRequest, user *domain.User) (string, error) {
 	args := m.Called(req, user)
 	return args.String(0), args.Error(1)
 }
 
 // VerifyEmail mocks the VerifyEmail method
-func (m *MockIdentityService) VerifyEmail(token string) (string, error) {
+func (m *MockIdentityService) VerifyEmailSvc(token string) (string, error) {
 	args := m.Called(token)
 	return args.String(0), args.Error(1)
 }
 
 // RequestPasswordReset mocks the RequestPasswordReset method
-func (m *MockIdentityService) RequestPasswordReset(email string) (string, error) {
+func (m *MockIdentityService) RequestPasswordResetSvc(email string) (string, error) {
 	args := m.Called(email)
 	return args.String(0), args.Error(1)
 }
 
 // ResetPassword mocks the ResetPassword method
-func (m *MockIdentityService) ResetPassword(token, newPassword string) (string, string, error) {
+func (m *MockIdentityService) ResetPasswordSvc(token, newPassword string) (string, string, error) {
 	args := m.Called(token, newPassword)
 	return args.String(0), args.String(1), args.Error(2)
 }
 
 // ChangePassword mocks the ChangePassword method
-func (m *MockIdentityService) ChangePassword(userID, oldPassword, newPassword string) (string, error) {
+func (m *MockIdentityService) ChangePasswordSvc(userID, oldPassword, newPassword string) (string, error) {
 	args := m.Called(userID, oldPassword, newPassword)
 	return args.String(0), args.Error(1)
 }
