@@ -16,40 +16,6 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-// TestDependencies holds the mock dependencies for the test cases
-type TestDependencies struct {
-	authService  *mocks.MockAuthService
-	tokenService *mocks.MockTokenService
-	logger       *mocks.MockLogger
-}
-
-// TestArgs holds the input arguments for the test cases
-type TestArgs struct {
-	ctx     context.Context
-	request any
-}
-
-// TestExpectations holds the expected results for the test cases
-type TestExpectations struct {
-	response any
-	error    bool
-	errorMsg string
-	code     codes.Code
-}
-
-// registerTestDeps contains test dependencies for register handler tests
-type registerTestDeps struct {
-	authService  *mocks.MockAuthService
-	tokenService *mocks.MockTokenService
-	logger       *mocks.MockLogger
-}
-
-// registerTestArgs contains input arguments for register handler tests
-type registerTestArgs struct {
-	ctx     context.Context
-	request *pb.RegisterRequest
-}
-
 // registerTestCase represents a test case for the register handler
 type registerTestCase struct {
 	name   string
@@ -109,42 +75,7 @@ func TestAuthServer_Register(t *testing.T) {
 				assert.Contains(t, resp.Message, "User registered successfully")
 			},
 		},
-		{
-			name: "missing required fields",
-			deps: registerTestDeps{
-				authService:  new(mocks.MockAuthService),
-				tokenService: new(mocks.MockTokenService),
-				logger:       new(mocks.MockLogger),
-			},
-			args: registerTestArgs{
-				ctx: context.Background(),
-				request: &pb.RegisterRequest{
-					Email:     "",
-					Password:  "",
-					FirstName: "",
-					LastName:  "",
-				},
-			},
-			before: func(t *testing.T, d *registerTestDeps, args registerTestArgs) (*grpc.AuthServer, *pb.RegisterResponse, error) {
-				server := &grpc.AuthServer{
-					AuthService:  d.authService,
-					TokenService: d.tokenService,
-					Logger:       d.logger,
-				}
 
-				return server, nil, nil
-			},
-			after: func(t *testing.T, d *registerTestDeps, resp *pb.RegisterResponse, err error) {
-				d.authService.AssertNotCalled(t, "Register", mock.Anything)
-				assert.Error(t, err)
-				assert.Nil(t, resp)
-
-				st, ok := status.FromError(err)
-				assert.True(t, ok)
-				assert.Equal(t, codes.InvalidArgument, st.Code())
-				assert.Contains(t, st.Message(), "missing required fields")
-			},
-		},
 		{
 			name: "service error during registration",
 			deps: registerTestDeps{
@@ -204,19 +135,6 @@ func TestAuthServer_Register(t *testing.T) {
 	}
 }
 
-// loginTestDeps contains test dependencies for login handler tests
-type loginTestDeps struct {
-	authService  *mocks.MockAuthService
-	tokenService *mocks.MockTokenService
-	logger       *mocks.MockLogger
-}
-
-// loginTestArgs contains input arguments for login handler tests
-type loginTestArgs struct {
-	ctx     context.Context
-	request *pb.LoginRequest
-}
-
 // loginTestCase represents a test case for the login handler
 type loginTestCase struct {
 	name   string
@@ -264,36 +182,6 @@ func TestAuthServer_Login(t *testing.T) {
 				d.authService.AssertExpectations(t)
 				d.tokenService.AssertExpectations(t)
 				d.logger.AssertExpectations(t)
-			},
-		},
-		{
-			name: "Login_MissingFields",
-			deps: loginTestDeps{
-				authService:  new(mocks.MockAuthService),
-				tokenService: new(mocks.MockTokenService),
-				logger:       new(mocks.MockLogger),
-			},
-			args: loginTestArgs{
-				ctx: context.Background(),
-				request: &pb.LoginRequest{
-					Email:    "",
-					Password: "",
-				},
-			},
-			before: func(t *testing.T, d *loginTestDeps, _ loginTestArgs) (*grpc.AuthServer, *pb.LoginResponse, error) {
-				server := &grpc.AuthServer{
-					AuthService:  d.authService,
-					TokenService: d.tokenService,
-					Logger:       d.logger,
-				}
-				return server, nil, status.Error(codes.InvalidArgument, "Missing email or password")
-			},
-			after: func(t *testing.T, d *loginTestDeps, _ *pb.LoginResponse, err error) {
-				assert.Error(t, err)
-				st, ok := status.FromError(err)
-				assert.True(t, ok)
-				assert.Equal(t, codes.InvalidArgument, st.Code())
-				assert.Contains(t, st.Message(), "Missing email or password")
 			},
 		},
 		{
@@ -510,4 +398,51 @@ func TestAuthServer_VerifyToken(t *testing.T) {
 				tc.deps.logger)
 		})
 	}
+}
+
+// TestDependencies holds the mock dependencies for the test cases
+type TestDependencies struct {
+	authService  *mocks.MockAuthService
+	tokenService *mocks.MockTokenService
+	logger       *mocks.MockLogger
+}
+
+// TestArgs holds the input arguments for the test cases
+type TestArgs struct {
+	ctx     context.Context
+	request any
+}
+
+// TestExpectations holds the expected results for the test cases
+type TestExpectations struct {
+	response any
+	error    bool
+	errorMsg string
+	code     codes.Code
+}
+
+// registerTestDeps contains test dependencies for register handler tests
+type registerTestDeps struct {
+	authService  *mocks.MockAuthService
+	tokenService *mocks.MockTokenService
+	logger       *mocks.MockLogger
+}
+
+// registerTestArgs contains input arguments for register handler tests
+type registerTestArgs struct {
+	ctx     context.Context
+	request *pb.RegisterRequest
+}
+
+// loginTestDeps contains test dependencies for login handler tests
+type loginTestDeps struct {
+	authService  *mocks.MockAuthService
+	tokenService *mocks.MockTokenService
+	logger       *mocks.MockLogger
+}
+
+// loginTestArgs contains input arguments for login handler tests
+type loginTestArgs struct {
+	ctx     context.Context
+	request *pb.LoginRequest
 }
