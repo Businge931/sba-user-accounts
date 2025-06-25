@@ -23,5 +23,12 @@ func Load() *Config {
 		Server: ServerConfig{
 			GRPCPort: env.GetEnv("GRPC_PORT", "50051"),
 		},
+		SMTP: SMTPConfig{
+			Host:     env.GetEnv("SMTP_HOST", "smtp.example.com"),
+			Port:     env.GetInt("SMTP_PORT", 587),
+			Username: env.GetEnv("SMTP_USERNAME", ""),
+			Password: env.GetEnv("SMTP_PASSWORD", ""),
+			From:     env.GetEnv("SMTP_FROM", "noreply@example.com"),
+		},
 	}
 }

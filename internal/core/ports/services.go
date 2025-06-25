@@ -17,6 +17,7 @@ type (
 	EmailService interface {
 		SendVerificationEmail(to, token string) error
 		SendPasswordResetEmail(to, token string) error
+		SendRegistrationEmail(to, token string) error
 	}
 
 	TokenService interface {
@@ -35,7 +36,7 @@ type (
 	IdentityService interface {
 		RegisterSvc(req domain.RegisterRequest) (*domain.User, error)
 		LoginSvc(req domain.LoginRequest, user *domain.User) (string, error)
-		ResetPasswordSvc(token string, newPassword string) (string,string, error)
+		ResetPasswordSvc(token string, newPassword string) (string, string, error)
 		ChangePasswordSvc(userID string, oldPassword, newPassword string) (string, error)
 		VerifyEmailSvc(token string) (string, error)
 		RequestPasswordResetSvc(email string) (string, error)

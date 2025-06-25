@@ -51,6 +51,12 @@ func (m *MockEmailService) SendPasswordResetEmail(to, token string) error {
 	return args.Error(0)
 }
 
+// SendRegistrationEmail mocks the SendRegistrationEmail method
+func (m *MockEmailService) SendRegistrationEmail(to, token string) error {
+	args := m.Called(to, token)
+	return args.Error(0)
+}
+
 // MockAuthService mocks the AuthService interface for testing
 type MockAuthService struct {
 	mock.Mock

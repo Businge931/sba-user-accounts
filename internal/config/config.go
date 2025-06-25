@@ -9,6 +9,7 @@ type Config struct {
 	DB     DBConfig
 	Auth   AuthConfig
 	Server ServerConfig
+	SMTP   SMTPConfig
 }
 
 // DBConfig holds database connection configuration
@@ -29,4 +30,13 @@ type AuthConfig struct {
 // ServerConfig holds server related configuration
 type ServerConfig struct {
 	GRPCPort string
+}
+
+// SMTPConfig holds SMTP server configuration
+type SMTPConfig struct {
+	Host     string
+	Port     int
+	Username string
+	Password string
+	From     string
 }
