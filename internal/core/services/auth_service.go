@@ -13,8 +13,6 @@ type authService struct {
 	validator        ports.ValidationService
 	logger           ports.Logger
 	identityProvider ports.IdentityService
-	// authRepo ports.AuthRepository
-	// tokenSvc       ports.TokenService
 }
 
 func NewAuthService(
@@ -22,16 +20,12 @@ func NewAuthService(
 	validator ports.ValidationService,
 	identityProvider ports.IdentityService,
 	logger ports.Logger,
-	// authRepo ports.AuthRepository,
-	// tokenSvc ports.TokenService,
 ) ports.AuthService {
 	return &authService{
 		userRepo:         userRepo,
 		validator:        validator,
 		identityProvider: identityProvider,
 		logger:           logger,
-		// authRepo: authRepo,
-		// tokenSvc:  tokenSvc,
 	}
 }
 
