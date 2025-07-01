@@ -49,12 +49,12 @@ func (r *userRepository) GetByEmail(email string) (*domain.User, error) {
 	var user domain.User
 	result := r.db.First(&user, "email = ?", email)
 
-	if errors.Is(result.Error, gorm.ErrRecordNotFound) {
-		return nil, apperrors.ErrUserNotFound
-	}
-
 	if result.Error != nil {
-		return nil, result.Error
+		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+			return nil, apperrors.ErrUserNotFound
+		}
+		// For other database errors, return as internal server error
+		return nil, apperrors.NewInternalError("failed to get user by email", result.Error)
 	}
 
 	return &user, nil
