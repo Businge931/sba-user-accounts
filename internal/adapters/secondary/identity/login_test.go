@@ -16,7 +16,7 @@ func TestIdentityProvider_LoginSvc(t *testing.T) {
 	tests := []loginTestCase{
 		{
 			name: "successful login returns token",
-			setupMocks: func(d *loginTestDependencies) {
+			before: func(d *loginTestDependencies) {
 				d.tokenSvc.On("GenerateToken", "123").
 					Return("test.jwt.token", nil).
 					Once()
@@ -44,7 +44,7 @@ func TestIdentityProvider_LoginSvc(t *testing.T) {
 		},
 		{
 			name: "returns error when user is nil",
-			setupMocks: func(d *loginTestDependencies) {
+			before: func(d *loginTestDependencies) {
 				d.logger.On("Debugf", mock.Anything, mock.Anything).Maybe()
 			},
 			args: struct {
@@ -65,7 +65,7 @@ func TestIdentityProvider_LoginSvc(t *testing.T) {
 		},
 		{
 			name: "returns error when password is invalid",
-			setupMocks: func(d *loginTestDependencies) {
+			before: func(d *loginTestDependencies) {
 				d.logger.On("Debugf", "Password comparison failed: %v", mock.Anything).Maybe()
 			},
 			args: struct {
@@ -90,7 +90,7 @@ func TestIdentityProvider_LoginSvc(t *testing.T) {
 		},
 		{
 			name: "returns error when token generation fails",
-			setupMocks: func(d *loginTestDependencies) {
+			before: func(d *loginTestDependencies) {
 				d.tokenSvc.On("GenerateToken", "123").
 					Return("", fmt.Errorf("token generation failed")).
 					Once()
@@ -126,8 +126,8 @@ func TestIdentityProvider_LoginSvc(t *testing.T) {
 			svc, deps := setupLoginMocks(t)
 
 			// Setup test-specific mocks
-			if tt.setupMocks != nil {
-				tt.setupMocks(deps)
+			if tt.before != nil {
+				tt.before(deps)
 			}
 
 			// Execute the method under test
