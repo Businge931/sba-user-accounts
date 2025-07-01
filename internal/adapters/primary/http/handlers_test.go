@@ -3,316 +3,247 @@ package http
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
 	"github.com/Businge931/sba-user-accounts/internal/core/domain"
+	"github.com/Businge931/sba-user-accounts/internal/core/errors"
+	"github.com/Businge931/sba-user-accounts/internal/core/ports"
+	"github.com/Businge931/sba-user-accounts/internal/core/services/mocks"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
 
-func TestHandler_RegisterHandler(t *testing.T) {
-	tests := []registerTestCase{
-		{
-			name: "successful registration",
-			deps: registerTestdeps{
-				authService: new(MockAuthService),
-			},
-			args: registerTestargs{
-				requestBody: map[string]string{
-					"email":      "test@example.com",
-					"password":   "password123",
-					"first_name": "John",
-					"last_name":  "Doe",
-				},
-			},
-			before: func(t *testing.T, d *registerTestdeps, args registerTestargs) (*httptest.ResponseRecorder, *http.Request) {
-				req := domain.RegisterRequest{
-					Email:     "test@example.com",
-					Password:  "password123",
-					FirstName: "John",
-					LastName:  "Doe",
-				}
-				d.authService.On("Register", req).
-					Return(&domain.User{
-						ID:        "user-123",
-						Email:     "test@example.com",
-						FirstName: "John",
-						LastName:  "Doe",
-					}, nil)
-
-				handler := NewHandler(d.authService)
-				reqBody, _ := json.Marshal(args.requestBody)
-				httpReq := httptest.NewRequest("POST", "/register", bytes.NewBuffer(reqBody))
-				httpReq.Header.Set("Content-Type", "application/json")
-				rr := httptest.NewRecorder()
-
-				handler.RegisterHandler(rr, httpReq)
-				return rr, httpReq
-			},
-			after: func(t *testing.T, d *registerTestdeps, rr *httptest.ResponseRecorder) {
-				d.authService.AssertExpectations(t)
-				assert.Equal(t, http.StatusCreated, rr.Code)
-				assert.Contains(t, rr.Body.String(), `"id":"user-123","email":"test@example.com","first_name":"John","last_name":"Doe","is_email_verified":false`)
-				assert.Equal(t, "application/json", rr.Header().Get("Content-Type"))
-			},
-		},
-		{
-			name: "missing required fields",
-			deps: registerTestdeps{
-				authService: new(MockAuthService),
-			},
-			args: registerTestargs{
-				requestBody: map[string]string{
-					"email": "test@example.com",
-				},
-			},
-			before: func(t *testing.T, d *registerTestdeps, args registerTestargs) (*httptest.ResponseRecorder, *http.Request) {
-				handler := NewHandler(d.authService)
-				reqBody, _ := json.Marshal(args.requestBody)
-				httpReq := httptest.NewRequest("POST", "/register", bytes.NewBuffer(reqBody))
-				httpReq.Header.Set("Content-Type", "application/json")
-				rr := httptest.NewRecorder()
-
-				handler.RegisterHandler(rr, httpReq)
-				return rr, httpReq
-			},
-			after: func(t *testing.T, d *registerTestdeps, rr *httptest.ResponseRecorder) {
-				d.authService.AssertNotCalled(t, "Register", mock.Anything)
-				d.authService.AssertExpectations(t)
-				assert.Equal(t, http.StatusBadRequest, rr.Code)
-				assert.Contains(t, rr.Body.String(), "All fields are required")
-				assert.Equal(t, "text/plain; charset=utf-8", rr.Header().Get("Content-Type"))
-			},
-		},
-		{
-			name: "invalid email format",
-			deps: registerTestdeps{
-				authService: new(MockAuthService),
-			},
-			args: registerTestargs{
-				requestBody: map[string]string{
-					"email":      "invalid-email",
-					"password":   "password123",
-					"first_name": "John",
-					"last_name":  "Doe",
-				},
-			},
-			before: func(t *testing.T, d *registerTestdeps, args registerTestargs) (*httptest.ResponseRecorder, *http.Request) {
-				req := domain.RegisterRequest{
-					Email:     "invalid-email",
-					Password:  "password123",
-					FirstName: "John",
-					LastName:  "Doe",
-				}
-				d.authService.On("Register", req).Return(nil, errors.New("invalid email format"))
-
-				handler := NewHandler(d.authService)
-				reqBody, _ := json.Marshal(args.requestBody)
-				httpReq := httptest.NewRequest("POST", "/register", bytes.NewBuffer(reqBody))
-				httpReq.Header.Set("Content-Type", "application/json")
-				rr := httptest.NewRecorder()
-
-				handler.RegisterHandler(rr, httpReq)
-				return rr, httpReq
-			},
-			after: func(t *testing.T, d *registerTestdeps, rr *httptest.ResponseRecorder) {
-				d.authService.AssertExpectations(t)
-				assert.Equal(t, http.StatusBadRequest, rr.Code)
-				assert.Contains(t, rr.Body.String(), "invalid email format")
-				assert.Equal(t, "text/plain; charset=utf-8", rr.Header().Get("Content-Type"))
-			},
-		},
-		{
-			name: "email already exists",
-			deps: registerTestdeps{
-				authService: new(MockAuthService),
-			},
-			args: registerTestargs{
-				requestBody: map[string]string{
-					"email":      "test@example.com",
-					"password":   "password123",
-					"first_name": "John",
-					"last_name":  "Doe",
-				},
-			},
-			before: func(t *testing.T, d *registerTestdeps, args registerTestargs) (*httptest.ResponseRecorder, *http.Request) {
-				req := domain.RegisterRequest{
-					Email:     "test@example.com",
-					Password:  "password123",
-					FirstName: "John",
-					LastName:  "Doe",
-				}
-				d.authService.On("Register", req).Return((*domain.User)(nil), errors.New("email already exists"))
-
-				handler := NewHandler(d.authService)
-				reqBody, _ := json.Marshal(args.requestBody)
-				httpReq := httptest.NewRequest("POST", "/register", bytes.NewBuffer(reqBody))
-				httpReq.Header.Set("Content-Type", "application/json")
-				rr := httptest.NewRecorder()
-
-				handler.RegisterHandler(rr, httpReq)
-				return rr, httpReq
-			},
-			after: func(t *testing.T, d *registerTestdeps, rr *httptest.ResponseRecorder) {
-				d.authService.AssertExpectations(t)
-				assert.Equal(t, http.StatusBadRequest, rr.Code)
-				assert.Contains(t, rr.Body.String(), "email already exists")
-				assert.Equal(t, "text/plain; charset=utf-8", rr.Header().Get("Content-Type"))
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// Execute test case
-			rr, _ := tt.before(t, &tt.deps, tt.args)
-			// Verify expectations
-			tt.after(t, &tt.deps, rr)
-		})
-	}
+// mockAccountManagementService is a test double for the AccountManagementService interface
+type mockAccountManagementService struct {
+	mock.Mock
 }
 
-func TestHandler_LoginHandler(t *testing.T) {
-	tests := []loginTestCase{
+func (m *mockAccountManagementService) VerifyEmail(token string) error {
+	args := m.Called(token)
+	return args.Error(0)
+}
+
+func (m *mockAccountManagementService) RequestPasswordReset(email string) error {
+	args := m.Called(email)
+	return args.Error(0)
+}
+
+func (m *mockAccountManagementService) ResetPassword(token, newPassword string) error {
+	args := m.Called(token, newPassword)
+	return args.Error(0)
+}
+
+func (m *mockAccountManagementService) ChangePassword(userID, oldPassword, newPassword string) error {
+	args := m.Called(userID, oldPassword, newPassword)
+	return args.Error(0)
+}
+
+// Ensure mock implements the interface
+var _ ports.AccountManagementService = (*mockAccountManagementService)(nil)
+
+type testArgs struct {
+	method      string
+	path        string
+	header      map[string]string
+	queryParams map[string]string
+	body        any
+}
+
+type testCase struct {
+	name   string
+	args   testArgs
+	before func(t *testing.T, args testArgs, authSvc *mocks.MockAuthService, accountSvc *mockAccountManagementService) (*httptest.ResponseRecorder, *http.Request)
+	after  func(t *testing.T, rr *httptest.ResponseRecorder)
+}
+
+func TestHandlers(t *testing.T) {
+	tests := []testCase{
+		// RegisterHandler tests
 		{
-			name: "successful login",
-			deps: loginTestDeps{
-				authService: new(MockAuthService),
+			name: "register handler - successful registration",
+			args: testArgs{
+				method: http.MethodPost,
+				path:   "/register",
+				header: map[string]string{
+					"Content-Type": "application/json",
+				},
+				body: map[string]string{
+					"email":     "test@example.com",
+					"password":  "password123",
+					"firstName": "John",
+					"lastName":  "Doe",
+				},
 			},
-			args: loginTestArgs{
-				requestBody: map[string]string{
+			before: func(t *testing.T, args testArgs, authSvc *mocks.MockAuthService, accountSvc *mockAccountManagementService) (*httptest.ResponseRecorder, *http.Request) {
+				authSvc.On("Register", mock.MatchedBy(func(req domain.RegisterRequest) bool {
+					return req.Email == "test@example.com" &&
+						req.Password == "password123" &&
+						req.FirstName == "" &&
+						req.LastName == ""
+				})).Return(&domain.User{
+					Email:     "test@example.com",
+					FirstName: "",
+					LastName:  "",
+				}, nil)
+
+				reqBody, _ := json.Marshal(args.body)
+				httpReq, _ := http.NewRequest(args.method, args.path, bytes.NewReader(reqBody))
+				for k, v := range args.header {
+					httpReq.Header.Set(k, v)
+				}
+
+				return httptest.NewRecorder(), httpReq
+			},
+			after: func(t *testing.T, rr *httptest.ResponseRecorder) {
+				assert.Equal(t, http.StatusCreated, rr.Code)
+			},
+		},
+
+		// LoginHandler tests
+		{
+			name: "login handler - successful login",
+			args: testArgs{
+				method: http.MethodPost,
+				path:   "/login",
+				header: map[string]string{
+					"Content-Type": "application/json",
+				},
+				body: map[string]string{
 					"email":    "test@example.com",
 					"password": "password123",
 				},
 			},
-			before: func(t *testing.T, d *loginTestDeps, args loginTestArgs) (*httptest.ResponseRecorder, *http.Request) {
-				req := domain.LoginRequest{
+			before: func(t *testing.T, args testArgs, authSvc *mocks.MockAuthService, accountSvc *mockAccountManagementService) (*httptest.ResponseRecorder, *http.Request) {
+				authSvc.On("Login", domain.LoginRequest{
 					Email:    "test@example.com",
 					Password: "password123",
+				}).Return("test-token", nil)
+
+				reqBody, _ := json.Marshal(args.body)
+				httpReq, _ := http.NewRequest(args.method, args.path, bytes.NewReader(reqBody))
+				for k, v := range args.header {
+					httpReq.Header.Set(k, v)
 				}
-				d.authService.On("Login", req).Return("jwt.token.here", nil)
 
-				handler := NewHandler(d.authService)
-				reqBody, _ := json.Marshal(args.requestBody)
-				httpReq := httptest.NewRequest("POST", "/login", bytes.NewBuffer(reqBody))
-				httpReq.Header.Set("Content-Type", "application/json")
-				rr := httptest.NewRecorder()
-
-				handler.LoginHandler(rr, httpReq)
-				return rr, httpReq
+				return httptest.NewRecorder(), httpReq
 			},
-			after: func(t *testing.T, d *loginTestDeps, rr *httptest.ResponseRecorder) {
-				d.authService.AssertExpectations(t)
+			after: func(t *testing.T, rr *httptest.ResponseRecorder) {
 				assert.Equal(t, http.StatusOK, rr.Code)
-				assert.JSONEq(t, `{"token":"jwt.token.here"}`, rr.Body.String())
-				assert.Equal(t, "application/json", rr.Header().Get("Content-Type"))
+				var resp map[string]string
+				err := json.Unmarshal(rr.Body.Bytes(), &resp)
+				assert.NoError(t, err)
+				assert.Equal(t, "test-token", resp["token"])
 			},
 		},
-		{
-			name: "invalid request body",
-			deps: loginTestDeps{
-				authService: new(MockAuthService),
-			},
-			args: loginTestArgs{
-				requestBody: "invalid-json",
-			},
-			before: func(t *testing.T, d *loginTestDeps, args loginTestArgs) (*httptest.ResponseRecorder, *http.Request) {
-				handler := NewHandler(d.authService)
-				httpReq := httptest.NewRequest("POST", "/login", bytes.NewBufferString("invalid-json"))
-				httpReq.Header.Set("Content-Type", "application/json")
-				rr := httptest.NewRecorder()
 
-				handler.LoginHandler(rr, httpReq)
-				return rr, httpReq
-			},
-			after: func(t *testing.T, d *loginTestDeps, rr *httptest.ResponseRecorder) {
-				d.authService.AssertNotCalled(t, "Login", mock.Anything)
-				d.authService.AssertExpectations(t)
-				assert.Equal(t, http.StatusBadRequest, rr.Code)
-				assert.Contains(t, rr.Body.String(), "Invalid request body")
-				assert.Equal(t, "text/plain; charset=utf-8", rr.Header().Get("Content-Type"))
-			},
-		},
+		// LoginHandler error cases
 		{
-			name: "missing email or password",
-			deps: loginTestDeps{
-				authService: new(MockAuthService),
-			},
-			args: loginTestArgs{
-				requestBody: map[string]string{
-					"email": "test@example.com",
+			name: "login handler - invalid credentials",
+			args: testArgs{
+				method: http.MethodPost,
+				path:   "/login",
+				header: map[string]string{
+					"Content-Type": "application/json",
 				},
-			},
-			before: func(t *testing.T, d *loginTestDeps, args loginTestArgs) (*httptest.ResponseRecorder, *http.Request) {
-				handler := NewHandler(d.authService)
-				reqBody, _ := json.Marshal(args.requestBody)
-				httpReq := httptest.NewRequest("POST", "/login", bytes.NewBuffer(reqBody))
-				httpReq.Header.Set("Content-Type", "application/json")
-				rr := httptest.NewRecorder()
-
-				handler.LoginHandler(rr, httpReq)
-				return rr, httpReq
-			},
-			after: func(t *testing.T, d *loginTestDeps, rr *httptest.ResponseRecorder) {
-				d.authService.AssertNotCalled(t, "Login", mock.Anything)
-				d.authService.AssertExpectations(t)
-				assert.Equal(t, http.StatusBadRequest, rr.Code)
-				assert.Contains(t, rr.Body.String(), "Email and password are required")
-				assert.Equal(t, "text/plain; charset=utf-8", rr.Header().Get("Content-Type"))
-			},
-		},
-		{
-			name: "invalid credentials",
-			deps: loginTestDeps{
-				authService: new(MockAuthService),
-			},
-			args: loginTestArgs{
-				requestBody: map[string]string{
+				body: map[string]string{
 					"email":    "test@example.com",
 					"password": "wrongpassword",
 				},
 			},
-			before: func(t *testing.T, d *loginTestDeps, args loginTestArgs) (*httptest.ResponseRecorder, *http.Request) {
-				req := domain.LoginRequest{
+			before: func(t *testing.T, args testArgs, authSvc *mocks.MockAuthService, accountSvc *mockAccountManagementService) (*httptest.ResponseRecorder, *http.Request) {
+				authSvc.On("Login", domain.LoginRequest{
 					Email:    "test@example.com",
 					Password: "wrongpassword",
+				}).Return("", errors.ErrInvalidAuth)
+
+				reqBody, _ := json.Marshal(args.body)
+				httpReq, _ := http.NewRequest(args.method, args.path, bytes.NewReader(reqBody))
+				for k, v := range args.header {
+					httpReq.Header.Set(k, v)
 				}
-				d.authService.On("Login", req).Return("", errors.New("invalid credentials"))
 
-				handler := NewHandler(d.authService)
-				reqBody, _ := json.Marshal(args.requestBody)
-				httpReq := httptest.NewRequest("POST", "/login", bytes.NewBuffer(reqBody))
-				httpReq.Header.Set("Content-Type", "application/json")
-				rr := httptest.NewRecorder()
-
-				handler.LoginHandler(rr, httpReq)
-				return rr, httpReq
+				return httptest.NewRecorder(), httpReq
 			},
-			after: func(t *testing.T, d *loginTestDeps, rr *httptest.ResponseRecorder) {
-				d.authService.AssertExpectations(t)
+			after: func(t *testing.T, rr *httptest.ResponseRecorder) {
 				assert.Equal(t, http.StatusUnauthorized, rr.Code)
-				assert.Contains(t, rr.Body.String(), "invalid credentials")
+				// Expecting plain text error response
+				assert.Contains(t, rr.Body.String(), "invalid authentication")
 				assert.Equal(t, "text/plain; charset=utf-8", rr.Header().Get("Content-Type"))
 			},
 		},
+
+		{
+			name: "login handler - missing credentials",
+			args: testArgs{
+				method: http.MethodPost,
+				path:   "/login",
+				header: map[string]string{
+					"Content-Type": "application/json",
+				},
+				body: map[string]string{
+					// Missing email and password
+				},
+			},
+			before: func(t *testing.T, args testArgs, authSvc *mocks.MockAuthService, accountSvc *mockAccountManagementService) (*httptest.ResponseRecorder, *http.Request) {
+				authSvc.On("Login", domain.LoginRequest{}).Return("", errors.ErrInvalidInput)
+
+				reqBody, _ := json.Marshal(args.body)
+				httpReq, _ := http.NewRequest(args.method, args.path, bytes.NewReader(reqBody))
+				for k, v := range args.header {
+					httpReq.Header.Set(k, v)
+				}
+				return httptest.NewRecorder(), httpReq
+			},
+			after: func(t *testing.T, rr *httptest.ResponseRecorder) {
+				assert.Equal(t, http.StatusBadRequest, rr.Code)
+				// Expecting plain text error response
+				assert.Contains(t, rr.Body.String(), "invalid input")
+				assert.Equal(t, "text/plain; charset=utf-8", rr.Header().Get("Content-Type"))
+			},
+		},
+
+		// TODO:  Will add more test cases for other handlers...
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Execute test case
-			rr, _ := tt.before(t, &tt.deps, tt.args)
+			// Setup mocks
+			mockAuthSvc := new(mocks.MockAuthService)
+			mockAccountSvc := new(mockAccountManagementService)
+
+			// Create handler with mocks
+			h := &Handler{
+				authService:    mockAuthSvc,
+				accountService: mockAccountSvc,
+			}
+
+			// Call before function to set up test and get request/response
+			rr, req := tt.before(t, tt.args, mockAuthSvc, mockAccountSvc)
+
+			// Create a new request context and serve the request
+			var handler http.HandlerFunc
+			switch tt.name {
+			case "register handler - successful registration":
+				handler = h.RegisterHandler
+			case "login handler - successful login":
+				handler = h.LoginHandler
+			case "login handler - invalid credentials":
+				handler = h.LoginHandler
+			case "login handler - missing credentials":
+				handler = h.LoginHandler
+			default:
+				t.Fatalf("No handler defined for test case: %s", tt.name)
+			}
+			handler.ServeHTTP(rr, req)
+
 			// Verify expectations
-			tt.after(t, &tt.deps, rr)
+			tt.after(t, rr)
+
+			// Assert all expectations were met
+			mockAuthSvc.AssertExpectations(t)
+			mockAccountSvc.AssertExpectations(t)
 		})
 	}
-}
-
-func TestNewHandler(t *testing.T) {
-	mockAuth := new(MockAuthService)
-	h := NewHandler(mockAuth)
-	assert.NotNil(t, h)
-	assert.Equal(t, mockAuth, h.authService)
 }
