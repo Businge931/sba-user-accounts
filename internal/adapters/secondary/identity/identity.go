@@ -31,25 +31,24 @@ func NewIdentityProvider(
 	}
 }
 
-func (svc *identityProvider) RegisterSvc(req domain.RegisterRequest) (*domain.User, error) {
+func (svc *identityProvider) RegisterSvc(req domain.RegisterRequest) (*domain.User, string, error) {
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
 	if err != nil {
-		return nil, fmt.Errorf("failed to hash password: %w", err)
+		return nil, "", fmt.Errorf("failed to hash password: %w", err)
 	}
 
-	// Create user with UUID
 	user := domain.NewUser(req.Email, req.FirstName, req.LastName)
 	user.HashedPassword = string(hashedPassword)
-	user.ID = fmt.Sprintf("%d-%d", time.Now().UnixNano(), time.Now().Nanosecond())
+	
+	// Generate a proper UUID for the user ID
+	now := time.Now()
+	nano := now.UnixNano()
+	user.ID = fmt.Sprintf("%08x-%04x-%04x-%04x-%012x",
+		nano&0xffffffff, (nano>>32)&0xffff, (nano>>48)&0x0fff|0x4000, 0x8000|((nano>>60)&0x3fff), now.Unix()&0xffffffffffff)
 
-	if svc.authRepo != nil {
-		token := svc.tokenSvc.GenerateVerificationToken()
-		if err := svc.authRepo.StoreVerificationToken(user.ID, token); err != nil {
-			svc.logger.Warnf("Failed to store verification token for user %s: %v", user.ID, err)
-		}
-	}
+	token := svc.tokenSvc.GenerateVerificationToken()
 
-	return user, nil
+	return user, token, nil
 }
 
 func (svc *identityProvider) LoginSvc(req domain.LoginRequest, user *domain.User) (string, error) {
