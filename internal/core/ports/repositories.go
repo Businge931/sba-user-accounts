@@ -17,6 +17,7 @@ type
  	AuthRepository interface {
 	StoreVerificationToken(userID, token string) error
 	GetUserIDByVerificationToken(token string) (string, error)
+	GetVerificationTokenByUserID(userID string) (string, error)
 	StoreResetToken(userID, token string) error
 	GetUserIDByResetToken(token string) (string, error)
 	}
