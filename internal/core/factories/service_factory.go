@@ -4,6 +4,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/Businge931/sba-user-accounts/internal/adapters/secondary/email"
+	"github.com/Businge931/sba-user-accounts/internal/adapters/secondary/identity"
 	"github.com/Businge931/sba-user-accounts/internal/adapters/secondary/identity/token"
 	"github.com/Businge931/sba-user-accounts/internal/adapters/secondary/logging"
 	"github.com/Businge931/sba-user-accounts/internal/adapters/secondary/postgres"
@@ -57,14 +58,22 @@ func (f *ServiceFactory) InitializeServices() {
 	// First initialize supporting services
 	f.tokenSvc = token.NewJWTTokenService(f.config.Auth.JWTSecret, f.config.Auth.TokenExpiryMin)
 
-	// Create a simple email service implementation
+	// Create email service with SMTP
 	appBaseURL := "http://localhost:" + f.config.Server.GRPCPort
-	f.emailSvc = email.NewLoggingEmailService(appBaseURL)
+	f.emailSvc = email.NewSMTPEmailService(&f.config.SMTP, appBaseURL)
+
+	// Initialize identity provider
+	f.indentityProvider = identity.NewIdentityProvider(
+		f.authRepo,
+		f.userRepo,
+		f.tokenSvc,
+		f.logger,
+	)
 }
 
 // GetAuthService returns the authentication service
 func (f *ServiceFactory) GetAuthService() ports.AuthService {
-	return services.NewAuthService(f.userRepo, f.validator, f.indentityProvider, f.logger)
+	return services.NewAuthService(f.userRepo, f.authRepo, f.validator, f.indentityProvider, f.emailSvc, f.logger)
 }
 
 // GetAccountManagementService returns the account management service
