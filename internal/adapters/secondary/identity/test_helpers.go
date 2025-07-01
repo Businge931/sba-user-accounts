@@ -44,11 +44,12 @@ type registerTestCase struct {
 	args struct {
 		req domain.RegisterRequest
 	}
-	before  func(*testing.T, *registerTestDependencies)
-	after   func(*testing.T, *registerTestDependencies)
-	want    *domain.User
-	wantErr bool
-	err     error
+	before     func(*testing.T, *registerTestDependencies)
+	after      func(*testing.T, *registerTestDependencies)
+	want       *domain.User
+	wantToken  string // Expected token value to be returned
+	wantErr    bool
+	err        error
 }
 
 // LOGIN HELPERS
@@ -60,9 +61,9 @@ type loginTestDependencies struct {
 }
 
 type loginTestCase struct {
-	name       string
-	setupMocks func(*loginTestDependencies)
-	args       struct {
+	name   string
+	before func(*loginTestDependencies)
+	args   struct {
 		req  domain.LoginRequest
 		user *domain.User
 	}
