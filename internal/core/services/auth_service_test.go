@@ -4,11 +4,10 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/mock"
 	"github.com/Businge931/sba-user-accounts/internal/core/domain"
 	cerrors "github.com/Businge931/sba-user-accounts/internal/core/errors"
-
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 )
 
 func TestAuthService_Register(t *testing.T) {
@@ -32,18 +31,22 @@ func TestAuthService_Register(t *testing.T) {
 				LastName:  "Doe",
 			},
 			beforeFunc: func(d *TestDependencies) {
-				// Check if user exists
-				d.userRepo.On("GetByEmail", "test@example.com").Return(nil, errors.New("not found"))
+				// Setup logger expectations
+				AuthServiceSetupMockLogger(d.logger)
 
-				// Mock the identity provider Register method
+				// Mock user repository - user doesn't exist yet
+				d.userRepo.On("GetByEmail", "test@example.com").Return(nil, cerrors.ErrUserNotFound)
+
+				// Mock the identity provider RegisterSvc method
 				expectedUser := &domain.User{
+					ID:              "test-user-id",
 					Email:           "test@example.com",
 					FirstName:       "John",
 					LastName:        "Doe",
 					IsEmailVerified: false,
-					HashedPassword:  "hashed-password", // Identity provider handles hashing
+					HashedPassword:  "hashed-password",
 				}
-				d.identitySvc.On("Register", mock.MatchedBy(func(req domain.RegisterRequest) bool {
+				d.identitySvc.On("RegisterSvc", mock.MatchedBy(func(req domain.RegisterRequest) bool {
 					return req.Email == "test@example.com" &&
 						req.Password == "Password123!" &&
 						req.FirstName == "John" &&
@@ -51,11 +54,28 @@ func TestAuthService_Register(t *testing.T) {
 				})).Return(expectedUser, nil)
 
 				// Mock the user repository Create method
-				d.userRepo.On("Create", mock.AnythingOfType("*domain.User")).Return(nil)
+				d.userRepo.On("Create", mock.MatchedBy(func(user *domain.User) bool {
+					return user.Email == "test@example.com" &&
+						user.FirstName == "John" &&
+						user.LastName == "Doe"
+				})).Run(func(args mock.Arguments) {
+					user := args.Get(0).(*domain.User)
+					user.ID = "test-user-id" // Set ID that will be used in GetVerificationTokenByUserID
+				}).Return(nil)
+
+				// Mock the auth repository to return a verification token
+				d.authRepo.On("GetVerificationTokenByUserID", "test-user-id").Return("test-verification-token", nil)
+
+				// Mock the email service to expect a registration email
+				d.emailSvc.On("SendRegistrationEmail", "test@example.com", "test-verification-token").Return(nil)
 			},
 			afterFunc: func(t *testing.T, user *domain.User, err error) {
-				assert.NoError(t, err)
-				assert.NotNil(t, user)
+				if !assert.NoError(t, err) {
+					return
+				}
+				if !assert.NotNil(t, user) {
+					return
+				}
 				assert.Equal(t, "test@example.com", user.Email)
 				assert.Equal(t, "John", user.FirstName)
 				assert.Equal(t, "Doe", user.LastName)
@@ -71,6 +91,9 @@ func TestAuthService_Register(t *testing.T) {
 				LastName:  "User",
 			},
 			beforeFunc: func(d *TestDependencies) {
+				// Setup logger expectations
+				AuthServiceSetupMockLogger(d.logger)
+
 				existingUser := &domain.User{
 					ID:             "existing-user-id",
 					Email:          "existing@example.com",
@@ -82,9 +105,11 @@ func TestAuthService_Register(t *testing.T) {
 				// No need to mock identity provider as the function should return early
 			},
 			afterFunc: func(t *testing.T, user *domain.User, err error) {
-				assert.Error(t, err)
-				// The error is not wrapped in a DomainError, so we just check the error message
-				assert.Contains(t, err.Error(), "user with this email already exists")
+				if !assert.Error(t, err) {
+					return
+				}
+				// Check for the specific error type
+				assert.ErrorIs(t, err, cerrors.ErrEmailAlreadyExists)
 				// User should be nil when there's an error
 				assert.Nil(t, user)
 			},
@@ -134,18 +159,28 @@ func TestAuthService_Register(t *testing.T) {
 				LastName:  "User",
 			},
 			beforeFunc: func(d *TestDependencies) {
-				// User doesn't exist
-				d.userRepo.On("GetByEmail", "fail@example.com").Return(nil, errors.New("not found"))
+				// Setup logger expectations
+				AuthServiceSetupMockLogger(d.logger)
 
-				// Identity provider fails
-				d.identitySvc.On("Register", mock.MatchedBy(func(req domain.RegisterRequest) bool {
-					return req.Email == "fail@example.com"
+				// User doesn't exist
+				d.userRepo.On("GetByEmail", "fail@example.com").Return(nil, cerrors.ErrUserNotFound)
+
+				// Mock the identity provider RegisterSvc method to fail
+				d.identitySvc.On("RegisterSvc", mock.MatchedBy(func(req domain.RegisterRequest) bool {
+					return req.Email == "fail@example.com" &&
+						req.Password == "Password123!" &&
+						req.FirstName == "Fail" &&
+						req.LastName == "User"
 				})).Return(nil, errors.New("identity provider error"))
 			},
 			afterFunc: func(t *testing.T, user *domain.User, err error) {
-				assert.Error(t, err)
+				if !assert.Error(t, err) {
+					return
+				}
 				assert.Nil(t, user)
 				assert.Contains(t, err.Error(), "failed to register user")
+				// Verify the error is wrapped correctly
+				assert.ErrorContains(t, err, "identity provider error")
 			},
 		},
 	}
@@ -167,6 +202,7 @@ func TestAuthService_Register(t *testing.T) {
 	// Verify mocks were called with expected values
 	deps.userRepo.AssertExpectations(t)
 	deps.identitySvc.AssertExpectations(t)
+	deps.emailSvc.AssertExpectations(t)
 }
 
 func TestAuthService_Login(t *testing.T) {
