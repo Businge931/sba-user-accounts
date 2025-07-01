@@ -2,13 +2,11 @@ package grpc
 
 import (
 	"context"
-	"errors"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
 	"github.com/Businge931/sba-user-accounts/internal/core/domain"
-	dcerrors "github.com/Businge931/sba-user-accounts/internal/core/errors"
 	"github.com/Businge931/sba-user-accounts/internal/core/ports"
 	"github.com/Businge931/sba-user-accounts/proto"
 )
@@ -36,15 +34,7 @@ func (server *AuthServer) Register(_ context.Context, req *proto.RegisterRequest
 	_, err := server.AuthService.Register(registerReq)
 	if err != nil {
 		server.Logger.Errorf("Registration failed: %v", err)
-
-		// Handle specific error types
-		if errors.Is(err, dcerrors.ErrAlreadyExists) {
-			return nil, status.Error(codes.AlreadyExists, "User already exists")
-		}
-		if errors.Is(err, dcerrors.ErrInvalidInput) {
-			return nil, status.Error(codes.InvalidArgument, "Invalid input provided")
-		}
-		return nil, status.Error(codes.Internal, "Failed to register user")
+		return nil, MapError(err)
 	}
 
 	return &proto.RegisterResponse{
@@ -66,7 +56,7 @@ func (server *AuthServer) Login(_ context.Context, req *proto.LoginRequest) (*pr
 	token, err := server.AuthService.Login(loginReq)
 	if err != nil {
 		server.Logger.Infof("Login error for user %s: %v", req.GetEmail(), err)
-		return nil, mapLoginError(err)
+		return nil, MapLoginError(err)
 	}
 
 	return &proto.LoginResponse{
@@ -77,7 +67,6 @@ func (server *AuthServer) Login(_ context.Context, req *proto.LoginRequest) (*pr
 }
 
 // VerifyToken validates a JWT token and returns user information
-// This is a simplified implementation since we don't have a direct method in the AuthService
 func (server *AuthServer) VerifyToken(_ context.Context, req *proto.VerifyTokenRequest) (*proto.VerifyTokenResponse, error) {
 	// Validate request
 	if req.GetToken() == "" {
@@ -89,7 +78,7 @@ func (server *AuthServer) VerifyToken(_ context.Context, req *proto.VerifyTokenR
 		_, err := server.TokenService.ValidateToken(req.GetToken())
 		if err != nil {
 			server.Logger.Warnf("Token validation failed: %v", err)
-			return nil, status.Error(codes.Unauthenticated, "Invalid or expired token")
+			return nil, MapError(err)
 		}
 	}
 
