@@ -11,6 +11,7 @@ type TestDependencies struct {
 	authRepo    *mocks.MockAuthRepository
 	tokenSvc    *mocks.MockTokenService
 	identitySvc *mocks.MockIdentityService
+	emailSvc    *mocks.MockEmailService
 	logger      *mocks.MockLogger
 	validator   *validation.Validator
 }
@@ -22,6 +23,7 @@ func SetupTestDependencies() *TestDependencies {
 		authRepo:    new(mocks.MockAuthRepository),
 		tokenSvc:    new(mocks.MockTokenService),
 		identitySvc: new(mocks.MockIdentityService),
+		emailSvc:    new(mocks.MockEmailService),
 		logger:      new(mocks.MockLogger),
 		validator:   validation.NewValidator(),
 	}
@@ -42,8 +44,10 @@ func AuthServiceSetupMockLogger(logger *mocks.MockLogger) {
 func newTestAuthService(deps *TestDependencies) *authService {
 	return &authService{
 		userRepo:         deps.userRepo,
+		authRepo:         deps.authRepo,
 		validator:        deps.validator,
 		logger:           deps.logger,
 		identityProvider: deps.identitySvc,
+		emailService:     deps.emailSvc,
 	}
 }
