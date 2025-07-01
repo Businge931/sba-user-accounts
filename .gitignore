@@ -1,0 +1,9 @@
+/build/
+
+.envrc
+
+/bin
+/.vscode
+.qodo
+
+/vendor/
