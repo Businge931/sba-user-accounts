@@ -10,7 +10,8 @@ import (
 )
 
 type registerTestdeps struct {
-	authService *MockAuthService
+	authService    *MockAuthService
+	accountService *MockAccountService
 }
 
 type registerTestargs struct {
@@ -45,6 +46,10 @@ type MockAuthService struct {
 	mock.Mock
 }
 
+type MockAccountService struct {
+	mock.Mock
+}
+
 func (m *MockAuthService) Register(req domain.RegisterRequest) (*domain.User, error) {
 	args := m.Called(req)
 	if args.Get(0) == nil {
@@ -58,22 +63,30 @@ func (m *MockAuthService) Login(req domain.LoginRequest) (string, error) {
 	return args.String(0), args.Error(1)
 }
 
-func (m *MockAuthService) VerifyEmail(token string) error {
+func (m *MockAuthService) GetUserByEmail(email string) (*domain.User, error) {
+	args := m.Called(email)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*domain.User), args.Error(1)
+}
+
+func (m *MockAccountService) VerifyEmail(token string) error {
 	args := m.Called(token)
 	return args.Error(0)
 }
 
-func (m *MockAuthService) RequestPasswordReset(email string) error {
+func (m *MockAccountService) RequestPasswordReset(email string) error {
 	args := m.Called(email)
 	return args.Error(0)
 }
 
-func (m *MockAuthService) ResetPassword(token, newPassword string) error {
+func (m *MockAccountService) ResetPassword(token, newPassword string) error {
 	args := m.Called(token, newPassword)
 	return args.Error(0)
 }
 
-func (m *MockAuthService) ChangePassword(userID, oldPassword, newPassword string) error {
+func (m *MockAccountService) ChangePassword(userID, oldPassword, newPassword string) error {
 	args := m.Called(userID, oldPassword, newPassword)
 	return args.Error(0)
 }
