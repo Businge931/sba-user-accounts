@@ -74,3 +74,9 @@ func (m *MockAuthRepository) GetUserIDByResetToken(token string) (string, error)
 	args := m.Called(token)
 	return args.String(0), args.Error(1)
 }
+
+// GetVerificationTokenByUserID mocks the GetVerificationTokenByUserID method
+func (m *MockAuthRepository) GetVerificationTokenByUserID(userID string) (string, error) {
+	args := m.Called(userID)
+	return args.String(0), args.Error(1)
+}
