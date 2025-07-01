@@ -7,7 +7,6 @@ import (
 	"github.com/Businge931/sba-user-accounts/internal/core/domain"
 	cerrors "github.com/Businge931/sba-user-accounts/internal/core/errors"
 
-	// "github.com/Businge931/sba-user-accounts/internal/core/services/mocks"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"golang.org/x/crypto/bcrypt"
@@ -35,7 +34,7 @@ func TestAccountService_verifyEmail(t *testing.T) {
 			},
 			before: func(d *testDeps) {
 				userID := "user-id-123"
-				d.identityProvider.On("VerifyEmail", "valid-verification-token").Return(userID, nil).Once()
+				d.identityProvider.On("VerifyEmailSvc", "valid-verification-token").Return(userID, nil).Once()
 				d.userRepo.On("GetByID", userID).Return(&domain.User{
 					ID:              userID,
 					Email:           "test@example.com",
@@ -57,7 +56,7 @@ func TestAccountService_verifyEmail(t *testing.T) {
 				token: "invalid-verification-token",
 			},
 			before: func(d *testDeps) {
-				d.identityProvider.On("VerifyEmail", "invalid-verification-token").
+				d.identityProvider.On("VerifyEmailSvc", "invalid-verification-token").
 					Return("", errors.New("invalid or expired token")).Once()
 			},
 			afterFunc: func(t *testing.T, d *testDeps, err error) {
@@ -73,7 +72,7 @@ func TestAccountService_verifyEmail(t *testing.T) {
 			},
 			before: func(d *testDeps) {
 				userID := "non-existent-user"
-				d.identityProvider.On("VerifyEmail", "valid-but-user-not-found").Return(userID, nil).Once()
+				d.identityProvider.On("VerifyEmailSvc", "valid-but-user-not-found").Return(userID, nil).Once()
 				d.userRepo.On("GetByID", userID).Return(nil, errors.New("user not found")).Once()
 			},
 			afterFunc: func(t *testing.T, d *testDeps, err error) {
@@ -128,7 +127,7 @@ func TestAccountService_RequestPasswordReset(t *testing.T) {
 			},
 			before: func(d *testDeps) {
 				token := "reset-token-123"
-				d.identityProvider.On("RequestPasswordReset", "test@example.com").Return(token, nil).Once()
+				d.identityProvider.On("RequestPasswordResetSvc", "test@example.com").Return(token, nil).Once()
 				d.emailSvc.On("SendPasswordResetEmail", "test@example.com", token).Return(nil).Once()
 				d.logger.On("Infof", mock.Anything, mock.Anything).Maybe()
 			},
@@ -144,7 +143,7 @@ func TestAccountService_RequestPasswordReset(t *testing.T) {
 				email: "nonexistent@example.com",
 			},
 			before: func(d *testDeps) {
-				d.identityProvider.On("RequestPasswordReset", "nonexistent@example.com").Return("", nil).Once()
+				d.identityProvider.On("RequestPasswordResetSvc", "nonexistent@example.com").Return("", nil).Once()
 				d.logger.On("Infof", mock.Anything, mock.Anything).Maybe()
 			},
 			afterFunc: func(t *testing.T, d *testDeps, err error) {
@@ -198,7 +197,7 @@ func TestAccountService_ResetPassword(t *testing.T) {
 				password: "NewPassword123!"},
 			before: func(d *testDeps) {
 				hashedPassword := "$2a$10$hashedpassword12345678901234567890123456789012345678901234567890"
-				d.identityProvider.On("ResetPassword", "valid-reset-token", "NewPassword123!").
+				d.identityProvider.On("ResetPasswordSvc", "valid-reset-token", "NewPassword123!").
 					Return(hashedPassword, "user-id-123", nil).Once()
 				d.userRepo.On("GetByID", "user-id-123").Return(&domain.User{
 					ID:             "user-id-123",
@@ -224,7 +223,7 @@ func TestAccountService_ResetPassword(t *testing.T) {
 				password: "NewPassword123!",
 			},
 			before: func(d *testDeps) {
-				d.identityProvider.On("ResetPassword", "invalid-reset-token", "NewPassword123!").
+				d.identityProvider.On("ResetPasswordSvc", "invalid-reset-token", "NewPassword123!").
 					Return("", "", cerrors.NewError(cerrors.ErrorTypeInvalidInput, "invalid or expired token", nil)).Once()
 				d.logger.On("Infof", mock.Anything, mock.Anything).Maybe()
 			},
@@ -296,7 +295,7 @@ func TestAccountService_ChangePassword(t *testing.T) {
 					HashedPassword: string(hashedOldPassword),
 				}
 				d.userRepo.On("GetByID", "user-id-123").Return(user, nil)
-				d.identityProvider.On("ChangePassword", "user-id-123", "OldPassword123!", "NewPassword123!").
+				d.identityProvider.On("ChangePasswordSvc", "user-id-123", "OldPassword123!", "NewPassword123!").
 					Return(hashedNewPassword, nil).Once()
 				d.userRepo.On("Update", mock.MatchedBy(func(u *domain.User) bool {
 					// Check that the password was updated
@@ -326,7 +325,7 @@ func TestAccountService_ChangePassword(t *testing.T) {
 				}
 				d.userRepo.On("GetByID", "user-id-123").Return(user, nil)
 				err := errors.New("invalid current password")
-				d.identityProvider.On("ChangePassword", "user-id-123", "WrongOldPassword123!", "NewPassword123!").
+				d.identityProvider.On("ChangePasswordSvc", "user-id-123", "WrongOldPassword123!", "NewPassword123!").
 					Return("", err).Once()
 				d.logger.On("Infof", mock.Anything, mock.Anything).Maybe()
 			},
