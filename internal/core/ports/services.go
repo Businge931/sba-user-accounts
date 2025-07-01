@@ -34,7 +34,7 @@ type (
 		ValidateName(name, fieldName string) error
 	}
 	IdentityService interface {
-		RegisterSvc(req domain.RegisterRequest) (*domain.User, error)
+		RegisterSvc(req domain.RegisterRequest) (*domain.User, string, error)
 		LoginSvc(req domain.LoginRequest, user *domain.User) (string, error)
 		ResetPasswordSvc(token string, newPassword string) (string, string, error)
 		ChangePasswordSvc(userID string, oldPassword, newPassword string) (string, error)
