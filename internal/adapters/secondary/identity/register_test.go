@@ -52,6 +52,7 @@ func TestIdentityProvider_RegisterSvc(t *testing.T) {
 				FirstName: "John",
 				LastName:  "Doe",
 			},
+			wantToken: "test-verification-token",
 		},
 		{
 			name: "handles token storage error gracefully",
@@ -89,6 +90,7 @@ func TestIdentityProvider_RegisterSvc(t *testing.T) {
 				FirstName: "John",
 				LastName:  "Doe",
 			},
+			wantToken: "test-token",
 		},
 	}
 
@@ -117,7 +119,7 @@ func TestIdentityProvider_RegisterSvc(t *testing.T) {
 			}
 
 			// Execute the method under test
-			user, err := svc.RegisterSvc(tt.args.req)
+			user, token, err := svc.RegisterSvc(tt.args.req)
 
 			// Verify the results
 			if tt.wantErr {
@@ -133,6 +135,12 @@ func TestIdentityProvider_RegisterSvc(t *testing.T) {
 				assert.Equal(t, tt.want.Email, user.Email)
 				assert.Equal(t, tt.want.FirstName, user.FirstName)
 				assert.Equal(t, tt.want.LastName, user.LastName)
+
+				// Verify token is returned
+				assert.NotEmpty(t, token, "token should be returned")
+				if tt.wantToken != "" {
+					assert.Equal(t, tt.wantToken, token, "returned token should match expected")
+				}
 
 				// Verify password was hashed
 				hashErr := bcrypt.CompareHashAndPassword(
