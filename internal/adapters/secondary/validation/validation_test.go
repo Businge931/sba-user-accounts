@@ -8,18 +8,10 @@ import (
 )
 
 func TestValidator_ValidateEmail(t *testing.T) {
-	tests := []struct {
-		name         string
-		dependencies func() *testDependencies
-		args         testArgs
-		before       func()
-		after        func()
-		expect       func(*testing.T, error)
-	}{
+	tests := []emailTestCase{
 		{
-			name: "valid email",
-			dependencies: func() *testDependencies {
-				return setupTest()
+			baseTestCase: baseTestCase{
+				name: "valid email",
 			},
 			args: testArgs{
 				email: "test@example.com",
@@ -29,9 +21,8 @@ func TestValidator_ValidateEmail(t *testing.T) {
 			},
 		},
 		{
-			name: "empty email",
-			dependencies: func() *testDependencies {
-				return setupTest()
+			baseTestCase: baseTestCase{
+				name: "empty email",
 			},
 			args: testArgs{
 				email: "",
@@ -42,9 +33,8 @@ func TestValidator_ValidateEmail(t *testing.T) {
 			},
 		},
 		{
-			name: "invalid email format - missing @",
-			dependencies: func() *testDependencies {
-				return setupTest()
+			baseTestCase: baseTestCase{
+				name: "invalid email format - missing @",
 			},
 			args: testArgs{
 				email: "testexample.com",
@@ -58,12 +48,12 @@ func TestValidator_ValidateEmail(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			deps := tc.dependencies()
+			tc.deps = setupTestDeps()
 			if tc.before != nil {
 				tc.before()
 			}
 
-			err := deps.validator.ValidateEmail(tc.args.email)
+			err := tc.deps.validator.ValidateEmail(tc.args.email)
 
 			if tc.after != nil {
 				tc.after()
@@ -75,18 +65,10 @@ func TestValidator_ValidateEmail(t *testing.T) {
 }
 
 func TestValidator_ValidatePassword(t *testing.T) {
-	tests := []struct {
-		name         string
-		dependencies func() *testDependencies
-		args         testArgs
-		before       func()
-		after        func()
-		expect       func(*testing.T, error)
-	}{
+	tests := []passwordTestCase{
 		{
-			name: "valid password",
-			dependencies: func() *testDependencies {
-				return setupTest()
+			baseTestCase: baseTestCase{
+				name: "valid password",
 			},
 			args: testArgs{
 				password: "Password123!",
@@ -96,9 +78,8 @@ func TestValidator_ValidatePassword(t *testing.T) {
 			},
 		},
 		{
-			name: "empty password",
-			dependencies: func() *testDependencies {
-				return setupTest()
+			baseTestCase: baseTestCase{
+				name: "empty password",
 			},
 			args: testArgs{
 				password: "",
@@ -112,12 +93,12 @@ func TestValidator_ValidatePassword(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			deps := tc.dependencies()
+			tc.deps = setupTestDeps()
 			if tc.before != nil {
 				tc.before()
 			}
 
-			err := deps.validator.ValidatePassword(tc.args.password)
+			err := tc.deps.validator.ValidatePassword(tc.args.password)
 
 			if tc.after != nil {
 				tc.after()
@@ -129,32 +110,22 @@ func TestValidator_ValidatePassword(t *testing.T) {
 }
 
 func TestValidator_ValidateRegisterRequest(t *testing.T) {
-	tests := []struct {
-		name         string
-		dependencies func() *testDependencies
-		setup        func() domain.RegisterRequest
-		before       func()
-		after        func()
-		expect       func(*testing.T, error)
-	}{
+	tests := []registerTestCase{
 		{
-			name:         "valid register request",
-			dependencies: func() *testDependencies { return setupTest() },
+			baseTestCase: baseTestCase{
+				name: "valid register request",
+			},
 			setup: func() domain.RegisterRequest {
-				return domain.RegisterRequest{
-					Email:     "test@example.com",
-					Password:  "ValidPass123!",
-					FirstName: "John",
-					LastName:  "Doe",
-				}
+				return validRegisterRequest()
 			},
 			expect: func(t *testing.T, err error) {
 				assert.NoError(t, err)
 			},
 		},
 		{
-			name:         "invalid email format",
-			dependencies: func() *testDependencies { return setupTest() },
+			baseTestCase: baseTestCase{
+				name: "invalid email format",
+			},
 			setup: func() domain.RegisterRequest {
 				req := validRegisterRequest()
 				req.Email = "invalid-email"
@@ -166,19 +137,20 @@ func TestValidator_ValidateRegisterRequest(t *testing.T) {
 			},
 		},
 		{
-			name:         "missing all required fields",
-			dependencies: func() *testDependencies { return setupTest() },
-			setup:        func() domain.RegisterRequest { return domain.RegisterRequest{} },
+			baseTestCase: baseTestCase{
+				name: "missing all required fields",
+			},
+			setup: func() domain.RegisterRequest { return domain.RegisterRequest{} },
 			expect: func(t *testing.T, err error) {
 				assert.Error(t, err)
-				// Check that we have validation errors
 				errMsg := err.Error()
 				assert.Contains(t, errMsg, "cannot be blank")
 			},
 		},
 		{
-			name:         "password too short",
-			dependencies: func() *testDependencies { return setupTest() },
+			baseTestCase: baseTestCase{
+				name: "password too short",
+			},
 			setup: func() domain.RegisterRequest {
 				req := validRegisterRequest()
 				req.Password = "short"
@@ -190,8 +162,9 @@ func TestValidator_ValidateRegisterRequest(t *testing.T) {
 			},
 		},
 		{
-			name:         "invalid first name format",
-			dependencies: func() *testDependencies { return setupTest() },
+			baseTestCase: baseTestCase{
+				name: "invalid first name format",
+			},
 			setup: func() domain.RegisterRequest {
 				req := validRegisterRequest()
 				req.FirstName = "John123"
@@ -206,14 +179,14 @@ func TestValidator_ValidateRegisterRequest(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			deps := tc.dependencies()
+			tc.deps = setupTestDeps()
 			req := tc.setup()
 
 			if tc.before != nil {
 				tc.before()
 			}
 
-			err := deps.validator.ValidateRegisterRequest(req)
+			err := tc.deps.validator.ValidateRegisterRequest(req)
 
 			if tc.after != nil {
 				tc.after()
@@ -225,30 +198,22 @@ func TestValidator_ValidateRegisterRequest(t *testing.T) {
 }
 
 func TestValidator_ValidateLoginRequest(t *testing.T) {
-	tests := []struct {
-		name         string
-		dependencies func() *testDependencies
-		setup        func() domain.LoginRequest
-		before       func()
-		after        func()
-		expect       func(*testing.T, error)
-	}{
+	tests := []loginTestCase{
 		{
-			name:         "valid login request",
-			dependencies: func() *testDependencies { return setupTest() },
+			baseTestCase: baseTestCase{
+				name: "valid login request",
+			},
 			setup: func() domain.LoginRequest {
-				return domain.LoginRequest{
-					Email:    "test@example.com",
-					Password: "password123",
-				}
+				return validLoginRequest()
 			},
 			expect: func(t *testing.T, err error) {
 				assert.NoError(t, err)
 			},
 		},
 		{
-			name:         "missing email",
-			dependencies: func() *testDependencies { return setupTest() },
+			baseTestCase: baseTestCase{
+				name: "missing email",
+			},
 			setup: func() domain.LoginRequest {
 				req := validLoginRequest()
 				req.Email = ""
@@ -260,8 +225,9 @@ func TestValidator_ValidateLoginRequest(t *testing.T) {
 			},
 		},
 		{
-			name:         "missing password",
-			dependencies: func() *testDependencies { return setupTest() },
+			baseTestCase: baseTestCase{
+				name: "missing password",
+			},
 			setup: func() domain.LoginRequest {
 				req := validLoginRequest()
 				req.Password = ""
@@ -273,8 +239,9 @@ func TestValidator_ValidateLoginRequest(t *testing.T) {
 			},
 		},
 		{
-			name:         "invalid email format",
-			dependencies: func() *testDependencies { return setupTest() },
+			baseTestCase: baseTestCase{
+				name: "invalid email format",
+			},
 			setup: func() domain.LoginRequest {
 				req := validLoginRequest()
 				req.Email = "not-an-email"
@@ -289,14 +256,14 @@ func TestValidator_ValidateLoginRequest(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			deps := tc.dependencies()
+			tc.deps = setupTestDeps()
 			req := tc.setup()
 
 			if tc.before != nil {
 				tc.before()
 			}
 
-			err := deps.validator.ValidateLoginRequest(req)
+			err := tc.deps.validator.ValidateLoginRequest(req)
 
 			if tc.after != nil {
 				tc.after()
@@ -308,17 +275,11 @@ func TestValidator_ValidateLoginRequest(t *testing.T) {
 }
 
 func TestValidator_ValidateName(t *testing.T) {
-	tests := []struct {
-		name         string
-		dependencies func() *testDependencies
-		setup        func() (string, string) // returns name and fieldName
-		before       func()
-		after        func()
-		expect       func(*testing.T, error)
-	}{
+	tests := []nameTestCase{
 		{
-			name:         "valid name",
-			dependencies: func() *testDependencies { return setupTest() },
+			baseTestCase: baseTestCase{
+				name: "valid name",
+			},
 			setup: func() (string, string) {
 				return "John", "first_name"
 			},
@@ -327,8 +288,9 @@ func TestValidator_ValidateName(t *testing.T) {
 			},
 		},
 		{
-			name:         "empty name",
-			dependencies: func() *testDependencies { return setupTest() },
+			baseTestCase: baseTestCase{
+				name: "empty name",
+			},
 			setup: func() (string, string) {
 				return "", "last_name"
 			},
@@ -338,8 +300,9 @@ func TestValidator_ValidateName(t *testing.T) {
 			},
 		},
 		{
-			name:         "name too short",
-			dependencies: func() *testDependencies { return setupTest() },
+			baseTestCase: baseTestCase{
+				name: "name too short",
+			},
 			setup: func() (string, string) {
 				return "A", "username"
 			},
@@ -352,14 +315,14 @@ func TestValidator_ValidateName(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			deps := tc.dependencies()
+			tc.deps = setupTestDeps()
 			name, fieldName := tc.setup()
 
 			if tc.before != nil {
 				tc.before()
 			}
 
-			err := deps.validator.ValidateName(name, fieldName)
+			err := tc.deps.validator.ValidateName(name, fieldName)
 
 			if tc.after != nil {
 				tc.after()
@@ -370,7 +333,22 @@ func TestValidator_ValidateName(t *testing.T) {
 	}
 }
 
-// Helper functions for test data
+// Test dependencies and helpers
+type testDeps struct {
+	validator *Validator
+}
+
+type testArgs struct {
+	email    string
+	password string
+}
+
+func setupTestDeps() *testDeps {
+	return &testDeps{
+		validator: NewValidator(),
+	}
+}
+
 func validRegisterRequest() domain.RegisterRequest {
 	return domain.RegisterRequest{
 		Email:     "test@example.com",
@@ -387,20 +365,40 @@ func validLoginRequest() domain.LoginRequest {
 	}
 }
 
-type testDependencies struct {
-	validator *Validator
+// Test case structures
+type baseTestCase struct {
+	name   string
+	deps   *testDeps
+	before func()
+	after  func()
 }
 
-type testArgs struct {
-	email     string
-	password  string
-	firstName string
-	lastName  string
-	field     string
+type emailTestCase struct {
+	baseTestCase
+	args   testArgs
+	expect func(*testing.T, error)
 }
 
-func setupTest() *testDependencies {
-	return &testDependencies{
-		validator: NewValidator(),
-	}
+type passwordTestCase struct {
+	baseTestCase
+	args   testArgs
+	expect func(*testing.T, error)
+}
+
+type registerTestCase struct {
+	baseTestCase
+	setup  func() domain.RegisterRequest
+	expect func(*testing.T, error)
+}
+
+type loginTestCase struct {
+	baseTestCase
+	setup  func() domain.LoginRequest
+	expect func(*testing.T, error)
+}
+
+type nameTestCase struct {
+	baseTestCase
+	setup  func() (string, string)
+	expect func(*testing.T, error)
 }
