@@ -16,6 +16,9 @@ var (
 	ErrInternal         = errors.New("internal error")
 	ErrTokenExpired     = errors.New("token expired")
 	ErrUserNotFound     = errors.New("user not found")
+	// New error types for auth flow
+	ErrTooManyAttempts  = errors.New("too many login attempts, please try again later")
+	ErrAccountDisabled  = errors.New("account has been disabled")
 )
 
 // Domain error types
@@ -29,6 +32,8 @@ const (
 	ErrorTypeInvalidInput  ErrorType = "INVALID_INPUT"
 	ErrorTypeInternal      ErrorType = "INTERNAL"
 	ErrorTypeTokenExpired  ErrorType = "TOKEN_EXPIRED"
+	ErrorTypeTooManyAttempts ErrorType = "TOO_MANY_ATTEMPTS"
+	ErrorTypeAccountDisabled ErrorType = "ACCOUNT_DISABLED"
 )
 
 // DomainError represents a domain-specific error
