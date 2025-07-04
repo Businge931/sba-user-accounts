@@ -1,15 +1,10 @@
 package identityprovider
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
-	"net/http"
-	"strings"
-	"time"
 
-	"firebase.google.com/go/v4/auth"
+	"github.com/Businge931/sba-user-accounts/internal/adapters/secondary/identity_provider/firebase"
 	"github.com/Businge931/sba-user-accounts/internal/core/domain"
 	dcerrors "github.com/Businge931/sba-user-accounts/internal/core/errors"
 	"github.com/Businge931/sba-user-accounts/internal/core/ports"
@@ -17,124 +12,55 @@ import (
 )
 
 type firebaseAuthProvider struct {
-	client *auth.Client
+	client *firebase.FirebaseClient
 	logger *logrus.Logger
-	apiKey string
 }
 
 // NewFirebaseAuthProvider creates a new instance of the Firebase Auth provider
-func NewFirebaseAuthProvider(authClient *auth.Client, logger *logrus.Logger, apiKey string) ports.IdentityService {
+func NewFirebaseAuthProvider(client *firebase.FirebaseClient, logger *logrus.Logger) ports.IdentityService {
 	return &firebaseAuthProvider{
-		client: authClient,
+		client: client,
 		logger: logger,
-		apiKey: apiKey,
 	}
 }
 
 func (p *firebaseAuthProvider) RegisterSvc(req domain.RegisterRequest) (*domain.User, string, error) {
-	// First, create the user in Firebase Auth
-	params := (&auth.UserToCreate{}).
-		Email(req.Email).
-		EmailVerified(false).
-		Password(req.Password).
-		DisplayName(fmt.Sprintf("%s %s", req.FirstName, req.LastName)).
-		Disabled(false)
-
-	userRecord, err := p.client.CreateUser(context.Background(), params)
+	// Create the user in Firebase
+	user, err := p.client.CreateUser(context.Background(), req.Email, req.Password, req.FirstName, req.LastName)
 	if err != nil {
 		p.logger.Errorf("Failed to create Firebase user: %v", err)
 		return nil, "", fmt.Errorf("failed to create user: %w", err)
 	}
 
 	// Generate email verification link
-	emailVerificationLink, err := p.client.EmailVerificationLink(context.Background(), req.Email)
+	verificationLink, err := p.client.SendVerificationEmail(context.Background(), req.Email)
 	if err != nil {
-		p.logger.Errorf("Failed to generate email verification link: %v", err)
+		p.logger.Errorf("Failed to send verification email: %v", err)
 		// Continue without failing since we can still create the user
 	}
 
-	// Map Firebase user to our domain user
-	user := &domain.User{
-		ID:        userRecord.UID,
-		Email:     userRecord.Email,
-		FirstName: req.FirstName,
-		LastName:  req.LastName,
-		// Firebase handles email verification status
-		IsEmailVerified: userRecord.EmailVerified,
+	// Map to domain user
+	domainUser := &domain.User{
+		ID:              user.ID,
+		Email:           user.Email,
+		FirstName:       user.FirstName,
+		LastName:        user.LastName,
+		IsEmailVerified: user.IsEmailVerified,
 	}
 
-	return user, emailVerificationLink, nil
+	return domainUser, verificationLink, nil
 }
 
-func (p *firebaseAuthProvider) verifyPassword(email, password string) (*auth.UserRecord, error) {
-	// Get the user by email to check if they exist
-	userRecord, err := p.client.GetUserByEmail(context.Background(), email)
+func (p *firebaseAuthProvider) verifyPassword(email, password string) (string, error) {
+	// Verify the password using the Firebase client
+	userID, err := p.client.VerifyPassword(context.Background(), email, password)
 	if err != nil {
-		if auth.IsUserNotFound(err) {
-			p.logger.Debugf("Login attempt for non-existent user: %s", email)
-			return nil, dcerrors.ErrInvalidAuth
-		}
-		p.logger.Errorf("Failed to get user by email: %v", err)
-		return nil, dcerrors.ErrInternal
-	}
-
-	// Use Firebase REST API to verify the password
-	authURL := fmt.Sprintf("https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=%s", p.apiKey)
-	payload := map[string]any{
-		"email":             email,
-		"password":          password,
-		"returnSecureToken": true,
-	}
-
-	jsonData, err := json.Marshal(payload)
-	if err != nil {
-		p.logger.Errorf("Failed to marshal auth payload: %v", err)
-		return nil, dcerrors.ErrInternal
-	}
-
-	req, err := http.NewRequest("POST", authURL, bytes.NewBuffer(jsonData))
-	if err != nil {
-		p.logger.Errorf("Failed to create auth request: %v", err)
-		return nil, dcerrors.ErrInternal
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	client := &http.Client{
-		Timeout: 10 * time.Second, // Add timeout to prevent hanging
-	}
-
-	resp, err := client.Do(req)
-	if err != nil {
-		p.logger.Errorf("Failed to verify password: %v", err)
-		return nil, dcerrors.ErrInternal
-	}
-	defer resp.Body.Close()
-
-	var result map[string]any
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		p.logger.Errorf("Failed to decode auth response: %v", err)
-		return nil, dcerrors.ErrInternal
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		errMsg, _ := result["error"].(map[string]interface{})["message"].(string)
-		p.logger.Debugf("Authentication failed for user %s: %v", email, errMsg)
-
-		// Return appropriate error based on Firebase error type
-		switch {
-		case strings.Contains(errMsg, "INVALID_PASSWORD"):
-			return nil, dcerrors.ErrInvalidAuth
-		case strings.Contains(errMsg, "TOO_MANY_ATTEMPTS_TRY_LATER"):
-			return nil, dcerrors.ErrTooManyAttempts
-		case strings.Contains(errMsg, "USER_DISABLED"):
-			return nil, dcerrors.ErrAccountDisabled
-		default:
-			return nil, dcerrors.ErrInvalidAuth
-		}
+		p.logger.Debugf("Authentication failed for user %s: %v", email, err)
+		return "", dcerrors.ErrInvalidAuth
 	}
 
 	p.logger.Debugf("Successfully verified password for user: %s", email)
-	return userRecord, nil
+	return userID, nil
 }
 
 func (p *firebaseAuthProvider) LoginSvc(req domain.LoginRequest, user *domain.User) (string, error) {
@@ -144,22 +70,22 @@ func (p *firebaseAuthProvider) LoginSvc(req domain.LoginRequest, user *domain.Us
 	}
 
 	// Verify the password with Firebase
-	userRecord, err := p.verifyPassword(req.Email, req.Password)
+	userID, err := p.verifyPassword(req.Email, req.Password)
 	if err != nil {
 		// verifyPassword returns standard domain errors
-		p.logger.Debugf("Login failed for user %s: %v", user.ID, err)
+		p.logger.Debugf("Login failed for user with email %s: %v", req.Email, err)
 		return "", err
 	}
 
 	// Double-check that the user ID matches
-	if userRecord.UID != user.ID {
-		err := fmt.Errorf("user ID mismatch: expected %s, got %s", user.ID, userRecord.UID)
+	if userID != user.ID {
+		err := fmt.Errorf("user ID mismatch: expected %s, got %s", user.ID, userID)
 		p.logger.Errorf("Authentication failed: %v", err)
 		return "", dcerrors.ErrInternal
 	}
 
 	// Generate a custom token for the user
-	token, err := p.client.CustomToken(context.Background(), user.ID)
+	token, err := p.client.CreateCustomToken(context.Background(), userID)
 	if err != nil {
 		p.logger.Errorf("Failed to generate custom token for user %s: %v", user.ID, err)
 		return "", dcerrors.ErrInternal
@@ -173,73 +99,93 @@ func (p *firebaseAuthProvider) LoginSvc(req domain.LoginRequest, user *domain.Us
 
 // VerifyEmailSvc verifies a user's email using the verification token
 func (p *firebaseAuthProvider) VerifyEmailSvc(token string) (string, error) {
-	// In Firebase, email verification is handled via a link sent to the user's email
-	// This method would be called after the user clicks the verification link
-	// So I just need to check if the user's email is verified
-
-	// Get user by ID token
-	decoded, err := p.client.VerifyIDToken(context.Background(), token)
+	// Verify the email verification token
+	err := p.client.VerifyEmail(context.Background(), token)
 	if err != nil {
-		p.logger.Errorf("Failed to verify ID token: %v", err)
-		return "", fmt.Errorf("invalid or expired token")
+		p.logger.Errorf("Failed to verify email token: %v", err)
+		return "", fmt.Errorf("invalid or expired verification token")
 	}
 
-	// Get user record to check email verification status
-	userRecord, err := p.client.GetUser(context.Background(), decoded.UID)
+	// Get the user's ID from the token
+	userID, err := p.client.VerifyIDToken(context.Background(), token)
 	if err != nil {
-		p.logger.Errorf("Failed to get user record: %v", err)
-		return "", fmt.Errorf("user not found")
+		p.logger.Errorf("Failed to get user ID from token: %v", err)
+		return "", fmt.Errorf("invalid token")
 	}
 
-	if !userRecord.EmailVerified {
-		return "", fmt.Errorf("email not verified")
-	}
-
-	return userRecord.UID, nil
+	return userID, nil
 }
 
 // RequestPasswordResetSvc sends a password reset email to the user
 func (p *firebaseAuthProvider) RequestPasswordResetSvc(email string) (string, error) {
-	// Firebase will handle sending the password reset email
-	// I don't need to generate a token manually
-	link, err := p.client.PasswordResetLink(context.Background(), email)
+	// Send password reset email
+	resetLink, err := p.client.SendPasswordResetEmail(context.Background(), email)
 	if err != nil {
-		p.logger.Errorf("Failed to generate password reset link: %v", err)
-		// Don't reveal if the email exists for security reasons
-		return "", nil
+		p.logger.Errorf("Failed to send password reset email: %v", err)
+		return "", fmt.Errorf("failed to send password reset email")
 	}
 
-	return link, nil
+	return resetLink, nil
 }
 
 // ResetPasswordSvc resets a user's password using a reset token
 func (p *firebaseAuthProvider) ResetPasswordSvc(token, newPassword string) (string, string, error) {
-	// In Firebase, the reset token is part of the password reset link
-	// The client should have already verified the token and sent the new password
-	// So this method might not be needed if using Firebase's built-in password reset flow
+	// Note: Firebase handles the password reset flow via email link
+	// This method is called after the user has clicked the reset link and submitted a new password
+	// The token should be verified by the frontend before calling this method
 
-	// If I need to implement this, I would verify the token and update the password
-	// But this is generally not needed with Firebase's default flow
+	// Get the user ID from the token
+	userID, err := p.client.VerifyIDToken(context.Background(), token)
+	if err != nil {
+		p.logger.Errorf("Failed to verify token: %v", err)
+		return "", "", fmt.Errorf("invalid or expired token")
+	}
 
-	return "", "", fmt.Errorf("not implemented: use Firebase's password reset link flow instead")
+	// Update the user's password
+	err = p.client.UpdatePassword(context.Background(), userID, newPassword)
+	if err != nil {
+		p.logger.Errorf("Failed to update user password: %v", err)
+		return "", "", fmt.Errorf("failed to reset password")
+	}
+
+	// Generate a new token for the user
+	newToken, err := p.client.CreateCustomToken(context.Background(), userID)
+	if err != nil {
+		p.logger.Errorf("Failed to generate new token: %v", err)
+		return "", "", fmt.Errorf("failed to generate new token")
+	}
+
+	return userID, newToken, nil
 }
 
 // ChangePasswordSvc changes a user's password
 func (p *firebaseAuthProvider) ChangePasswordSvc(userID, oldPassword, newPassword string) (string, error) {
-	// Update the user's password
-	params := (&auth.UserToUpdate{}).Password(newPassword)
-	_, err := p.client.UpdateUser(context.Background(), userID, params)
+	// Get the user by ID
+	user, err := p.client.GetUserByEmail(context.Background(), userID) // Using email as ID for now
+	if err != nil {
+		p.logger.Errorf("Failed to get user: %v", err)
+		return "", fmt.Errorf("user not found")
+	}
+
+	// Verify the old password
+	_, err = p.verifyPassword(user.Email, oldPassword)
+	if err != nil {
+		p.logger.Debugf("Failed to verify old password for user %s: %v", userID, err)
+		return "", fmt.Errorf("invalid old password")
+	}
+
+	// Update to the new password
+	err = p.client.UpdatePassword(context.Background(), user.ID, newPassword)
 	if err != nil {
 		p.logger.Errorf("Failed to update password: %v", err)
 		return "", fmt.Errorf("failed to update password")
 	}
 
-	// Generate a new token since the old one might be invalidated
-	newToken, err := p.client.CustomToken(context.Background(), userID)
+	// Generate a new token for the user
+	newToken, err := p.client.CreateCustomToken(context.Background(), user.ID)
 	if err != nil {
 		p.logger.Errorf("Failed to generate new token: %v", err)
-		// Still return success since password was changed
-		return "", nil
+		return "", fmt.Errorf("failed to generate new token")
 	}
 
 	return newToken, nil
