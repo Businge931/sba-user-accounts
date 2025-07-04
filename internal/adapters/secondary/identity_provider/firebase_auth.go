@@ -119,7 +119,7 @@ func (p *firebaseAuthProvider) verifyPassword(email, password string) (*auth.Use
 	if resp.StatusCode != http.StatusOK {
 		errMsg, _ := result["error"].(map[string]interface{})["message"].(string)
 		p.logger.Debugf("Authentication failed for user %s: %v", email, errMsg)
-		
+
 		// Return appropriate error based on Firebase error type
 		switch {
 		case strings.Contains(errMsg, "INVALID_PASSWORD"):
@@ -175,7 +175,7 @@ func (p *firebaseAuthProvider) LoginSvc(req domain.LoginRequest, user *domain.Us
 func (p *firebaseAuthProvider) VerifyEmailSvc(token string) (string, error) {
 	// In Firebase, email verification is handled via a link sent to the user's email
 	// This method would be called after the user clicks the verification link
-	// So we just need to check if the user's email is verified
+	// So I just need to check if the user's email is verified
 
 	// Get user by ID token
 	decoded, err := p.client.VerifyIDToken(context.Background(), token)
@@ -201,7 +201,7 @@ func (p *firebaseAuthProvider) VerifyEmailSvc(token string) (string, error) {
 // RequestPasswordResetSvc sends a password reset email to the user
 func (p *firebaseAuthProvider) RequestPasswordResetSvc(email string) (string, error) {
 	// Firebase will handle sending the password reset email
-	// We don't need to generate a token manually
+	// I don't need to generate a token manually
 	link, err := p.client.PasswordResetLink(context.Background(), email)
 	if err != nil {
 		p.logger.Errorf("Failed to generate password reset link: %v", err)
@@ -218,7 +218,7 @@ func (p *firebaseAuthProvider) ResetPasswordSvc(token, newPassword string) (stri
 	// The client should have already verified the token and sent the new password
 	// So this method might not be needed if using Firebase's built-in password reset flow
 
-	// If we need to implement this, we would verify the token and update the password
+	// If I need to implement this, I would verify the token and update the password
 	// But this is generally not needed with Firebase's default flow
 
 	return "", "", fmt.Errorf("not implemented: use Firebase's password reset link flow instead")
