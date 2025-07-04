@@ -18,7 +18,20 @@ func NewLogrusAdapter() ports.Logger {
 	logger := log.New()
 	logger.SetFormatter(&log.JSONFormatter{})
 	logger.SetOutput(os.Stdout)
-	logger.SetLevel(log.InfoLevel)
+
+	// Set log level from environment variable, default to info
+	logLevel := log.InfoLevel
+	switch os.Getenv("LOG_LEVEL") {
+	case "debug":
+		logLevel = log.DebugLevel
+	case "info":
+		logLevel = log.InfoLevel
+	case "warn":
+		logLevel = log.WarnLevel
+	case "error":
+		logLevel = log.ErrorLevel
+	}
+	logger.SetLevel(logLevel)
 
 	return &LogrusAdapter{
 		logger: logger,
