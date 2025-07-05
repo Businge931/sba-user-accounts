@@ -4,7 +4,7 @@ APP = sba-user-accounts
 GOBASE = $(shell pwd)
 GOBIN = $(GOBASE)/build/bin
 LINT_PATH = $(GOBASE)/build/lint
-MAIN_APP = $(GOBASE)/cmd/api
+MAIN_APP = $(GOBASE)/cmd
 MIGRATIONS_PATH=$(GOBASE)/migrations
 
 # Default database connection details (matches docker-compose.yml)
@@ -47,6 +47,14 @@ migrate-down: ## Run the migration down
 migration: ## Create a new migration
 	@/home/businge-bisanga/go/bin/migrate create -ext sql -dir $(MIGRATIONS_PATH) -seq $(filter-out $@,$(MAKECMDGOALS))		
 
+docker-up: ## Run the docker-compose
+	docker compose up -d
+
+docker-down: ## Stop the docker-compose
+	docker compose down
+
+docker-restart: ## Restart the docker-compose
+	docker-compose restart
 
 # run-tests: ## Run tests 
 # 	cd $(TEST_PATH) && go test .
