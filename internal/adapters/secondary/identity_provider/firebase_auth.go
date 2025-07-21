@@ -94,7 +94,7 @@ func (p *firebaseAuthProvider) verifyPassword(ctx context.Context, email, passwo
 	userID, err := p.client.VerifyPassword(ctx, email, password)
 	if err != nil {
 		p.logger.Debugf("Authentication failed for user %s: %v", email, err)
-		return "", dcerrors.ErrInvalidAuth
+		return "", err 
 	}
 
 	p.logger.Debugf("Successfully verified password for user: %s", email)

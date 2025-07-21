@@ -19,6 +19,16 @@ var (
 	// New error types for auth flow
 	ErrTooManyAttempts  = errors.New("too many login attempts, please try again later")
 	ErrAccountDisabled  = errors.New("account has been disabled")
+	
+	// Specific authentication error types
+	ErrInvalidEmail     = errors.New("invalid email address")
+	ErrInvalidPassword  = errors.New("invalid password")
+	ErrWrongPassword    = errors.New("incorrect password")
+	ErrEmailNotRegistered = errors.New("email address is not registered")
+	ErrEmailNotVerified = errors.New("email address is not verified")
+	ErrWeakPassword     = errors.New("password does not meet security requirements")
+	ErrPasswordTooShort = errors.New("password is too short")
+	ErrPasswordTooLong  = errors.New("password is too long")
 )
 
 // Domain error types
@@ -34,6 +44,13 @@ const (
 	ErrorTypeTokenExpired  ErrorType = "TOKEN_EXPIRED"
 	ErrorTypeTooManyAttempts ErrorType = "TOO_MANY_ATTEMPTS"
 	ErrorTypeAccountDisabled ErrorType = "ACCOUNT_DISABLED"
+	// Specific authentication error types
+	ErrorTypeInvalidEmail     ErrorType = "INVALID_EMAIL"
+	ErrorTypeInvalidPassword  ErrorType = "INVALID_PASSWORD"
+	ErrorTypeWrongPassword    ErrorType = "WRONG_PASSWORD"
+	ErrorTypeEmailNotRegistered ErrorType = "EMAIL_NOT_REGISTERED"
+	ErrorTypeEmailNotVerified ErrorType = "EMAIL_NOT_VERIFIED"
+	ErrorTypeWeakPassword     ErrorType = "WEAK_PASSWORD"
 )
 
 // DomainError represents a domain-specific error
@@ -101,4 +118,29 @@ func NewInternalError(message string, err error) error {
 
 func NewTokenExpiredError(message string, err error) error {
 	return NewError(ErrorTypeTokenExpired, message, err)
+}
+
+// Helper functions for authentication-specific errors
+func NewInvalidEmailError(message string, err error) error {
+	return NewError(ErrorTypeInvalidEmail, message, err)
+}
+
+func NewInvalidPasswordError(message string, err error) error {
+	return NewError(ErrorTypeInvalidPassword, message, err)
+}
+
+func NewWrongPasswordError(message string, err error) error {
+	return NewError(ErrorTypeWrongPassword, message, err)
+}
+
+func NewEmailNotRegisteredError(message string, err error) error {
+	return NewError(ErrorTypeEmailNotRegistered, message, err)
+}
+
+func NewEmailNotVerifiedError(message string, err error) error {
+	return NewError(ErrorTypeEmailNotVerified, message, err)
+}
+
+func NewWeakPasswordError(message string, err error) error {
+	return NewError(ErrorTypeWeakPassword, message, err)
 }

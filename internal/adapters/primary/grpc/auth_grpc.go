@@ -22,7 +22,6 @@ type AuthServer struct {
 // Register handles user registration requests from the API gateway
 func (server *AuthServer) Register(_ context.Context, req *proto.RegisterRequest) (*proto.RegisterResponse, error) {
 
-	// Create register request with all required fields
 	registerReq := domain.RegisterRequest{
 		Email:     req.GetEmail(),
 		Password:  req.GetPassword(),
@@ -46,7 +45,6 @@ func (server *AuthServer) Register(_ context.Context, req *proto.RegisterRequest
 // Login handles user login requests from the API gateway
 func (server *AuthServer) Login(_ context.Context, req *proto.LoginRequest) (*proto.LoginResponse, error) {
 
-	// Create login request
 	loginReq := domain.LoginRequest{
 		Email:    req.GetEmail(),
 		Password: req.GetPassword(),
