@@ -12,7 +12,7 @@ import (
 )
 
 type firebaseAuthProvider struct {
-	client *firebase.FirebaseClient
+	client FirebaseClient
 	logger *logrus.Logger
 }
 
@@ -25,52 +25,22 @@ func NewFirebaseAuthProvider(client *firebase.FirebaseClient, logger *logrus.Log
 	}
 }
 
-// firebaseAuthAdapter adapts firebaseAuthProvider to implement ports.IdentityService
-// without context parameters by creating contexts internally
-type firebaseAuthAdapter struct {
-	provider *firebaseAuthProvider
+// NewFirebaseAuthProviderForTesting creates a Firebase auth provider for testing with mock client
+func NewFirebaseAuthProviderForTesting(client FirebaseClient, logger *logrus.Logger) FirebaseAuthProvider {
+	return &firebaseAuthProvider{
+		client: client,
+		logger: logger,
+	}
 }
 
-// Implement ports.IdentityService interface (without context parameters)
-func (a *firebaseAuthAdapter) RegisterSvc(req domain.RegisterRequest) (*domain.User, string, error) {
-	ctx := context.Background()
-	return a.provider.RegisterSvc(ctx, req)
-}
-
-func (a *firebaseAuthAdapter) LoginSvc(req domain.LoginRequest, user *domain.User) (string, error) {
-	ctx := context.Background()
-	return a.provider.LoginSvc(ctx, req, user)
-}
-
-func (a *firebaseAuthAdapter) VerifyEmailSvc(token string) (string, error) {
-	ctx := context.Background()
-	return a.provider.VerifyEmailSvc(ctx, token)
-}
-
-func (a *firebaseAuthAdapter) RequestPasswordResetSvc(email string) (string, error) {
-	ctx := context.Background()
-	return a.provider.RequestPasswordResetSvc(ctx, email)
-}
-
-func (a *firebaseAuthAdapter) ResetPasswordSvc(token, newPassword string) (string, string, error) {
-	ctx := context.Background()
-	return a.provider.ResetPasswordSvc(ctx, token, newPassword)
-}
-
-func (a *firebaseAuthAdapter) ChangePasswordSvc(userID, oldPassword, newPassword string) (string, error) {
-	ctx := context.Background()
-	return a.provider.ChangePasswordSvc(ctx, userID, oldPassword, newPassword)
-}
 
 func (p *firebaseAuthProvider) RegisterSvc(ctx context.Context, req domain.RegisterRequest) (*domain.User, string, error) {
-	// Create the user in Firebase
 	user, err := p.client.CreateUser(ctx, req.Email, req.Password, req.FirstName, req.LastName)
 	if err != nil {
 		p.logger.Errorf("Failed to create Firebase user: %v", err)
 		return nil, "", fmt.Errorf("failed to create user: %w", err)
 	}
 
-	// Generate email verification link
 	verificationLink, err := p.client.SendVerificationEmail(ctx, req.Email)
 	if err != nil {
 		p.logger.Errorf("Failed to send verification email: %v", err)
@@ -89,28 +59,14 @@ func (p *firebaseAuthProvider) RegisterSvc(ctx context.Context, req domain.Regis
 	return domainUser, verificationLink, nil
 }
 
-func (p *firebaseAuthProvider) verifyPassword(ctx context.Context, email, password string) (string, error) {
-	// Verify the password using the Firebase client
-	userID, err := p.client.VerifyPassword(ctx, email, password)
-	if err != nil {
-		p.logger.Debugf("Authentication failed for user %s: %v", email, err)
-		return "", dcerrors.ErrInvalidAuth
-	}
-
-	p.logger.Debugf("Successfully verified password for user: %s", email)
-	return userID, nil
-}
-
 func (p *firebaseAuthProvider) LoginSvc(ctx context.Context, req domain.LoginRequest, user *domain.User) (string, error) {
 	if user == nil {
 		p.logger.Error("Login attempt with nil user")
 		return "", dcerrors.ErrInvalidAuth
 	}
 
-	// Verify the password with Firebase
 	userID, err := p.verifyPassword(ctx, req.Email, req.Password)
 	if err != nil {
-		// verifyPassword returns standard domain errors
 		p.logger.Debugf("Login failed for user with email %s: %v", req.Email, err)
 		return "", err
 	}
@@ -129,21 +85,29 @@ func (p *firebaseAuthProvider) LoginSvc(ctx context.Context, req domain.LoginReq
 		return "", dcerrors.ErrInternal
 	}
 
-	// Log successful login (without logging sensitive data)
 	p.logger.Infof("User %s logged in successfully", user.ID)
 
 	return token, nil
 }
 
+func (p *firebaseAuthProvider) verifyPassword(ctx context.Context, email, password string) (string, error) {
+	userID, err := p.client.VerifyPassword(ctx, email, password)
+	if err != nil {
+		p.logger.Debugf("Authentication failed for user %s: %v", email, err)
+		return "", dcerrors.ErrInvalidAuth
+	}
+
+	p.logger.Debugf("Successfully verified password for user: %s", email)
+	return userID, nil
+}
+
 func (p *firebaseAuthProvider) VerifyEmailSvc(ctx context.Context, token string) (string, error) {
-	// Verify the email verification token
 	err := p.client.VerifyEmail(ctx, token)
 	if err != nil {
 		p.logger.Errorf("Failed to verify email token: %v", err)
 		return "", fmt.Errorf("invalid or expired verification token")
 	}
 
-	// Get the user's ID from the token
 	userID, err := p.client.VerifyIDToken(ctx, token)
 	if err != nil {
 		p.logger.Errorf("Failed to get user ID from token: %v", err)
@@ -154,7 +118,6 @@ func (p *firebaseAuthProvider) VerifyEmailSvc(ctx context.Context, token string)
 }
 
 func (p *firebaseAuthProvider) RequestPasswordResetSvc(ctx context.Context, email string) (string, error) {
-	// Send password reset email
 	resetLink, err := p.client.SendPasswordResetEmail(ctx, email)
 	if err != nil {
 		p.logger.Errorf("Failed to send password reset email: %v", err)
@@ -165,18 +128,12 @@ func (p *firebaseAuthProvider) RequestPasswordResetSvc(ctx context.Context, emai
 }
 
 func (p *firebaseAuthProvider) ResetPasswordSvc(ctx context.Context, token, newPassword string) (string, string, error) {
-	// Note: Firebase handles the password reset flow via email link
-	// This method is called after the user has clicked the reset link and submitted a new password
-	// The token should be verified by the frontend before calling this method
-
-	// Get the user ID from the token
 	userID, err := p.client.VerifyIDToken(ctx, token)
 	if err != nil {
 		p.logger.Errorf("Failed to verify token: %v", err)
 		return "", "", fmt.Errorf("invalid or expired token")
 	}
 
-	// Update the user's password
 	err = p.client.UpdatePassword(ctx, userID, newPassword)
 	if err != nil {
 		p.logger.Errorf("Failed to update user password: %v", err)
@@ -194,7 +151,6 @@ func (p *firebaseAuthProvider) ResetPasswordSvc(ctx context.Context, token, newP
 }
 
 func (p *firebaseAuthProvider) ChangePasswordSvc(ctx context.Context, userID, oldPassword, newPassword string) (string, error) {
-	// Get the user by ID
 	user, err := p.client.GetUserByEmail(ctx, userID) // Using email as ID for now
 	if err != nil {
 		p.logger.Errorf("Failed to get user: %v", err)

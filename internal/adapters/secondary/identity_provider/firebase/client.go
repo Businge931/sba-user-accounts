@@ -32,7 +32,7 @@ func NewFirebaseClient(ctx context.Context, cfg *FirebaseConfig, logger *logrus.
 	if cfg == nil {
 		return nil, errors.New("firebase config cannot be nil")
 	}
-
+  
 	// Create configuration provider
 	configProvider := NewConfigProvider(cfg)
 
