@@ -19,7 +19,6 @@ import (
 	"gorm.io/gorm"
 )
 
-// ServiceFactory creates and initializes all services
 type ServiceFactory struct {
 	db               *gorm.DB
 	config           *config.Config
@@ -210,10 +209,15 @@ func (a *firebaseIdentityServiceAdapter) RegisterSvc(registerReq domain.Register
 		return nil, "", fmt.Errorf("failed to create user: %w", err)
 	}
 
-	// Generate a verification token using the token generator from the firebase client
-	token := a.firebaseClient.TokenGenerator.GenerateVerificationToken()
+	// Send Firebase verification email and get the verification link
+	verificationLink, err := a.firebaseClient.SendVerificationEmail(context.Background(), registerReq.Email)
+	if err != nil {
+		// Log error but don't fail registration - user can request verification later
+		// Return empty string for verification link if sending fails
+		return user, "", nil
+	}
 
-	return user, token, nil
+	return user, verificationLink, nil
 }
 
 // RequestPasswordResetSvc implements the RequestPasswordResetSvc method of ports.IdentityService

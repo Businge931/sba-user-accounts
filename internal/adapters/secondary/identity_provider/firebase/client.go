@@ -8,84 +8,81 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
-	firebase "firebase.google.com/go/v4"
 	"firebase.google.com/go/v4/auth"
 	"github.com/Businge931/sba-user-accounts/internal/core/domain"
 	"github.com/sirupsen/logrus"
-	"google.golang.org/api/option"
 )
 
-// FirebaseClient is the main client that composes all the interfaces
 type FirebaseClient struct {
-	UserManager
-	AuthProvider
-	PasswordHandler
-	EmailHandler
-	TokenGenerator
+	*firebaseClient // Embedded to promote all methods
 	logger *logrus.Logger
 }
 
-// firebaseClient implements all the Firebase-related interfaces
 type firebaseClient struct {
-	app    *firebase.App
-	config *FirebaseConfig
-	logger *logrus.Logger
+	sdk        FirebaseSDK
+	httpClient HTTPClient
+	config     ConfigProvider
+	logger     *logrus.Logger
 }
 
-// Ensure firebaseClient implements all required interfaces
-var (
-	_ UserManager     = (*firebaseClient)(nil)
-	_ AuthProvider    = (*firebaseClient)(nil)
-	_ PasswordHandler = (*firebaseClient)(nil)
-	_ EmailHandler    = (*firebaseClient)(nil)
-)
 
-// NewFirebaseClient creates a new Firebase client with the given configuration
 func NewFirebaseClient(ctx context.Context, cfg *FirebaseConfig, logger *logrus.Logger) (*FirebaseClient, error) {
 	if cfg == nil {
 		return nil, errors.New("firebase config cannot be nil")
 	}
 
-	// Initialize Firebase Admin SDK
-	opt := option.WithCredentialsFile(cfg.ServiceAccountKeyPath)
-	app, err := firebase.NewApp(ctx, &firebase.Config{
-		ProjectID:     cfg.ProjectID,
-		StorageBucket: cfg.StorageBucket,
-	}, opt)
+	// Create configuration provider
+	configProvider := NewConfigProvider(cfg)
+
+	// Initialize Firebase SDK
+	sdk, err := NewFirebaseSDK(ctx, configProvider)
 	if err != nil {
-		return nil, fmt.Errorf("error initializing firebase app: %w", err)
+		return nil, fmt.Errorf("error initializing firebase SDK: %w", err)
 	}
 
-	// Initialize auth client
-	if _, err := app.Auth(ctx); err != nil {
+	// Test connection by getting auth client
+	if _, err := sdk.Auth(ctx); err != nil {
 		return nil, fmt.Errorf("error getting auth client: %w", err)
 	}
 
+	// Create HTTP client with timeout
+	timeout := time.Duration(configProvider.GetHTTPTimeout()) * time.Second
+	httpClient := NewHTTPClient(timeout)
+
 	// Create and return the client
 	client := &firebaseClient{
-		app:    app,
-		config: cfg,
-		logger: logger,
+		sdk:        sdk,
+		httpClient: httpClient,
+		config:     configProvider,
+		logger:     logger,
 	}
-
-	// Create token generator
-	tokenGen := &defaultTokenGenerator{}
 
 	// Create the composite client
 	return &FirebaseClient{
-		UserManager:     client,
-		AuthProvider:    client,
-		PasswordHandler: client,
-		EmailHandler:    client,
-		TokenGenerator:  tokenGen,
-		logger:          logger,
+		firebaseClient: client,
+		logger:         logger,
 	}, nil
 }
 
-// UserManager implementation
+// NewFirebaseClientForTesting creates a FirebaseClient with injected dependencies for testing
+func NewFirebaseClientForTesting(sdk FirebaseSDK, httpClient HTTPClient, config ConfigProvider, logger *logrus.Logger) *FirebaseClient {
+	client := &firebaseClient{
+		sdk:        sdk,
+		httpClient: httpClient,
+		config:     config,
+		logger:     logger,
+	}
+
+	return &FirebaseClient{
+		firebaseClient: client,
+		logger:         logger,
+	}
+}
+
 func (c *firebaseClient) CreateUser(ctx context.Context, email, password, firstName, lastName string) (*domain.User, error) {
-	authClient, err := c.app.Auth(ctx)
+	authClient, err := c.sdk.Auth(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("error getting auth client: %w", err)
 	}
@@ -112,7 +109,7 @@ func (c *firebaseClient) CreateUser(ctx context.Context, email, password, firstN
 }
 
 func (c *firebaseClient) GetUserByEmail(ctx context.Context, email string) (*domain.User, error) {
-	authClient, err := c.app.Auth(ctx)
+	authClient, err := c.sdk.Auth(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("error getting auth client: %w", err)
 	}
@@ -144,7 +141,7 @@ func (c *firebaseClient) GetUserByEmail(ctx context.Context, email string) (*dom
 }
 
 func (c *firebaseClient) UpdateUser(ctx context.Context, userID string, updates map[string]any) error {
-	authClient, err := c.app.Auth(ctx)
+	authClient, err := c.sdk.Auth(ctx)
 	if err != nil {
 		return fmt.Errorf("error getting auth client: %w", err)
 	}
@@ -182,7 +179,7 @@ func (c *firebaseClient) UpdateUser(ctx context.Context, userID string, updates 
 
 // AuthProvider implementation
 func (c *firebaseClient) VerifyIDToken(ctx context.Context, token string) (string, error) {
-	authClient, err := c.app.Auth(ctx)
+	authClient, err := c.sdk.Auth(ctx)
 	if err != nil {
 		return "", fmt.Errorf("error getting auth client: %w", err)
 	}
@@ -196,7 +193,7 @@ func (c *firebaseClient) VerifyIDToken(ctx context.Context, token string) (strin
 }
 
 func (c *firebaseClient) CreateCustomToken(ctx context.Context, userID string) (string, error) {
-	authClient, err := c.app.Auth(ctx)
+	authClient, err := c.sdk.Auth(ctx)
 	if err != nil {
 		return "", fmt.Errorf("error getting auth client: %w", err)
 	}
@@ -209,9 +206,8 @@ func (c *firebaseClient) CreateCustomToken(ctx context.Context, userID string) (
 	return token, nil
 }
 
-// PasswordHandler implementation
 func (c *firebaseClient) VerifyPassword(ctx context.Context, email, password string) (string, error) {
-	authClient, err := c.app.Auth(ctx)
+	authClient, err := c.sdk.Auth(ctx)
 	if err != nil {
 		return "", fmt.Errorf("error getting auth client: %w", err)
 	}
@@ -232,7 +228,7 @@ func (c *firebaseClient) VerifyPassword(ctx context.Context, email, password str
 }
 
 func (c *firebaseClient) UpdatePassword(ctx context.Context, userID, newPassword string) error {
-	authClient, err := c.app.Auth(ctx)
+	authClient, err := c.sdk.Auth(ctx)
 	if err != nil {
 		return fmt.Errorf("error getting auth client: %w", err)
 	}
@@ -241,9 +237,8 @@ func (c *firebaseClient) UpdatePassword(ctx context.Context, userID, newPassword
 	return err
 }
 
-// EmailHandler implementation
 func (c *firebaseClient) SendVerificationEmail(ctx context.Context, email string) (string, error) {
-	authClient, err := c.app.Auth(ctx)
+	authClient, err := c.sdk.Auth(ctx)
 	if err != nil {
 		return "", fmt.Errorf("error getting auth client: %w", err)
 	}
@@ -257,7 +252,7 @@ func (c *firebaseClient) SendVerificationEmail(ctx context.Context, email string
 }
 
 func (c *firebaseClient) SendPasswordResetEmail(ctx context.Context, email string) (string, error) {
-	authClient, err := c.app.Auth(ctx)
+	authClient, err := c.sdk.Auth(ctx)
 	if err != nil {
 		return "", fmt.Errorf("error getting auth client: %w", err)
 	}
@@ -271,7 +266,7 @@ func (c *firebaseClient) SendPasswordResetEmail(ctx context.Context, email strin
 }
 
 func (c *firebaseClient) VerifyEmail(ctx context.Context, token string) error {
-	authClient, err := c.app.Auth(ctx)
+	authClient, err := c.sdk.Auth(ctx)
 	if err != nil {
 		return fmt.Errorf("error getting auth client: %w", err)
 	}
@@ -292,7 +287,7 @@ func (c *firebaseClient) signInWithEmailAndPassword(ctx context.Context, email, 
 	// or Firebase Admin SDK's custom token generation.
 	// For now, I'll use the Firebase REST API.
 
-	url := fmt.Sprintf("https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=%s", c.config.APIKey)
+	url := fmt.Sprintf("https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=%s", c.config.GetAPIKey())
 
 	reqBody := map[string]any{
 		"email":             email,
@@ -311,7 +306,7 @@ func (c *firebaseClient) signInWithEmailAndPassword(ctx context.Context, email, 
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("error making request: %w", err)
 	}
