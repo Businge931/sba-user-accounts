@@ -30,8 +30,8 @@ func createTestDBContainer(t *testing.T) (testcontainers.Container, *gorm.DB, st
 	ctx := context.Background()
 
 	// Create a PostgreSQL container
-	container, err := postgrescontainer.RunContainer(ctx,
-		testcontainers.WithImage("docker.io/postgres:16-alpine"),
+	container, err := postgrescontainer.Run(ctx,
+		"docker.io/postgres:16-alpine",
 		postgrescontainer.WithDatabase("testdb"),
 		postgrescontainer.WithUsername("postgres"),
 		postgrescontainer.WithPassword("postgres"),

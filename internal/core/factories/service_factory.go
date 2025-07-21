@@ -29,7 +29,7 @@ type ServiceFactory struct {
 	tokenSvc         ports.TokenService
 	emailSvc         ports.EmailService
 	identityProvider ports.IdentityService
-	firebaseApp      *firebaseclient.FirebaseClient
+	// firebaseApp      *firebaseclient.FirebaseClient
 }
 
 func NewServiceFactory(db *gorm.DB, config *config.Config) *ServiceFactory {
@@ -128,7 +128,6 @@ func initializeFirebase(ctx context.Context, config *config.Config, logger *logr
 		return nil, fmt.Errorf("FIREBASE_CREDENTIALS_FILE environment variable not set")
 	}
 
-	// Create Firebase config
 	firebaseCfg := &firebaseclient.FirebaseConfig{
 		ServiceAccountKeyPath: credentialsFile,
 		ProjectID:             config.Firebase.ProjectID,
@@ -137,7 +136,6 @@ func initializeFirebase(ctx context.Context, config *config.Config, logger *logr
 		HTTPClientTimeout:     30 * time.Second,
 	}
 
-	// Initialize Firebase client
 	client, err := firebaseclient.NewFirebaseClient(ctx, firebaseCfg, logger)
 	if err != nil {
 		return nil, fmt.Errorf("error initializing firebase client: %v", err)
@@ -160,7 +158,6 @@ func (a *firebaseIdentityServiceAdapter) ChangePasswordSvc(userID, oldPassword, 
 		return "", fmt.Errorf("invalid old password: %w", err)
 	}
 
-	// Update to the new password
 	err = a.firebaseClient.UpdatePassword(context.Background(), userID, newPassword)
 	if err != nil {
 		return "", fmt.Errorf("failed to update password: %w", err)

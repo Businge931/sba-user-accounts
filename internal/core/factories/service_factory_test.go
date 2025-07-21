@@ -11,7 +11,6 @@ import (
 	"gorm.io/gorm"
 )
 
-// TestServiceFactory tests the happy path scenarios for the ServiceFactory
 func TestServiceFactory(t *testing.T) {
 	// Helper to create a new PostgreSQL database container for testing
 	createTestDB := func(t *testing.T) *gorm.DB {

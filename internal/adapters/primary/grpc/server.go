@@ -12,7 +12,6 @@ import (
 	pb "github.com/Businge931/sba-user-accounts/proto"
 )
 
-// Server represents the gRPC server
 type Server struct {
 	grpcServer *grpc.Server
 	port       string
@@ -20,15 +19,15 @@ type Server struct {
 }
 
 // NewServer creates a new gRPC server
-func NewServer(port string, authService ports.AuthService, tokenService ports.TokenService, logger ports.Logger) *Server {
-	// Initialize gRPC server
+func NewServer(port string, authService ports.AuthService, tokenService ports.TokenService, accountService ports.AccountManagementService, logger ports.Logger) *Server {
 	grpcServer := grpc.NewServer()
 
 	// Create and register auth server
 	authServer := &AuthServer{
-		AuthService:  authService,
-		TokenService: tokenService,
-		Logger:       logger,
+		AuthService:           authService,
+		TokenService:          tokenService,
+		AccountService:        accountService,
+		Logger:                logger,
 	}
 	pb.RegisterAuthServiceServer(grpcServer, authServer)
 
@@ -42,7 +41,6 @@ func NewServer(port string, authService ports.AuthService, tokenService ports.To
 	}
 }
 
-// Start begins listening for gRPC requests
 func (s *Server) Start() error {
 	// Create TCP listener on configured port
 	lis, err := net.Listen("tcp", fmt.Sprintf(":%s", s.port))
@@ -52,11 +50,9 @@ func (s *Server) Start() error {
 
 	log.Infof("Starting gRPC server on port %s", s.port)
 
-	// Start serving gRPC requests
 	return s.grpcServer.Serve(lis)
 }
 
-// GracefulStop stops the gRPC server gracefully
 func (s *Server) GracefulStop() {
 	s.grpcServer.GracefulStop()
 }
