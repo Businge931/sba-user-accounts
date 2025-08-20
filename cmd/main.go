@@ -55,8 +55,11 @@ func main() {
 	// Get token service from factory
 	tokenService := serviceFactory.GetTokenService()
 
+	// Get account management service from factory
+	accountService := serviceFactory.GetAccountManagementService()
+
 	// Initialize and start gRPC server
-	server := grpc.NewServer(cfg.Server.GRPCPort, authService, tokenService, logger)
+	server := grpc.NewServer(cfg.Server.GRPCPort, authService, tokenService, accountService, logger)
 
 	logger.Infof("Starting gRPC server on port %s", cfg.Server.GRPCPort)
 	go func() {

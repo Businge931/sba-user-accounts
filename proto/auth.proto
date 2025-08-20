@@ -8,6 +8,9 @@ service AuthService {
   rpc Login (LoginRequest) returns (LoginResponse);
   rpc Register (RegisterRequest) returns (RegisterResponse);
   rpc VerifyToken (VerifyTokenRequest) returns (VerifyTokenResponse);
+  rpc RequestPasswordReset (RequestPasswordResetRequest) returns (RequestPasswordResetResponse);
+  rpc ChangePassword (ChangePasswordRequest) returns (ChangePasswordResponse);
+  rpc ResetPassword (ResetPasswordRequest) returns (ResetPasswordResponse);
 }
 
 message LoginRequest {
@@ -40,4 +43,35 @@ message VerifyTokenRequest {
 message VerifyTokenResponse {
   bool success = 1;
   string message = 2; 
+}
+
+message RequestPasswordResetRequest {
+  string email = 1;
+}
+
+message RequestPasswordResetResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+message ChangePasswordRequest {
+  string user_id = 1;
+  string old_password = 2;
+  string new_password = 3;
+}
+
+message ChangePasswordResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+message ResetPasswordRequest {
+  string token = 1;
+  string new_password = 2;
+}
+
+message ResetPasswordResponse {
+  bool success = 1;
+  string message = 2;
+  string user_id = 3;
 }

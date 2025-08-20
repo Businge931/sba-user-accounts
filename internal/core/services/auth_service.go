@@ -87,7 +87,8 @@ func (svc *authService) Login(req domain.LoginRequest) (string, error) {
 	user, err := svc.userRepo.GetByEmail(req.Email)
 	if err != nil {
 		svc.logger.Debugf("Error getting user by email: %v", err)
-		return "", apperrors.NewNotFoundError(apperrors.ErrUserNotFound.Error(), err)
+		// Return specific error for email not registered
+		return "", apperrors.NewEmailNotRegisteredError("Email address is not registered", err)
 	}
 
 	token, err := svc.identityProvider.LoginSvc(req, user)

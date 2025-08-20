@@ -39,7 +39,7 @@ func (svc *identityProvider) RegisterSvc(req domain.RegisterRequest) (*domain.Us
 
 	user := domain.NewUser(req.Email, req.FirstName, req.LastName)
 	user.HashedPassword = string(hashedPassword)
-	
+
 	// Generate a proper UUID for the user ID
 	now := time.Now()
 	nano := now.UnixNano()
@@ -130,6 +130,7 @@ func (svc *identityProvider) ChangePasswordSvc(userID string, oldPassword, newPa
 	return string(hashedPassword), nil
 
 }
+
 // hashPassword is a helper function that can be overridden in tests
 var hashPassword = func(password string) (string, error) {
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)

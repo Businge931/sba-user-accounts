@@ -32,6 +32,15 @@ func TestLoader(t *testing.T) {
 		Server: ServerConfig{
 			GRPCPort: "50051",
 		},
+		SMTP: SMTPConfig{
+			Host: "smtp.example.com",
+			Port: 587,
+			From: "noreply@example.com",
+		},
+		SendGrid: SendGridConfig{
+			FromEmail: "noreply@example.com",
+			FromName:  "SBA User Accounts",
+		},
 	}
 
 	tests := []testCase{
