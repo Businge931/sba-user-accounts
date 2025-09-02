@@ -17,7 +17,7 @@ import (
 
 type FirebaseClient struct {
 	*firebaseClient // Embedded to promote all methods
-	logger *logrus.Logger
+	logger          *logrus.Logger
 }
 
 type firebaseClient struct {
@@ -27,16 +27,14 @@ type firebaseClient struct {
 	logger     *logrus.Logger
 }
 
-
 func NewFirebaseClient(ctx context.Context, cfg *FirebaseConfig, logger *logrus.Logger) (*FirebaseClient, error) {
 	if cfg == nil {
 		return nil, errors.New("firebase config cannot be nil")
 	}
-  
+
 	// Create configuration provider
 	configProvider := NewConfigProvider(cfg)
 
-	// Initialize Firebase SDK
 	sdk, err := NewFirebaseSDK(ctx, configProvider)
 	if err != nil {
 		return nil, fmt.Errorf("error initializing firebase SDK: %w", err)
@@ -66,7 +64,6 @@ func NewFirebaseClient(ctx context.Context, cfg *FirebaseConfig, logger *logrus.
 	}, nil
 }
 
-// NewFirebaseClientForTesting creates a FirebaseClient with injected dependencies for testing
 func NewFirebaseClientForTesting(sdk FirebaseSDK, httpClient HTTPClient, config ConfigProvider, logger *logrus.Logger) *FirebaseClient {
 	client := &firebaseClient{
 		sdk:        sdk,

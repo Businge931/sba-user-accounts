@@ -72,7 +72,6 @@ func (server *AuthServer) VerifyToken(_ context.Context, req *proto.VerifyTokenR
 		return nil, status.Error(codes.InvalidArgument, "token is required")
 	}
 
-	// Attempt to verify the token using TokenService if available
 	if server.TokenService != nil {
 		_, err := server.TokenService.ValidateToken(req.GetToken())
 		if err != nil {
@@ -95,14 +94,14 @@ func (server *AuthServer) RequestPasswordReset(_ context.Context, req *proto.Req
 	}
 
 	server.Logger.Infof("Password reset requested for email: %s", req.GetEmail())
-	
+
 	// Call the account management service to handle password reset
 	err := server.AccountService.RequestPasswordReset(req.GetEmail())
 	if err != nil {
 		server.Logger.Errorf("Password reset failed for email %s: %v", req.GetEmail(), err)
 		return nil, MapError(err)
 	}
-	
+
 	return &proto.RequestPasswordResetResponse{
 		Success: true,
 		Message: "Password reset email sent successfully",
@@ -123,14 +122,14 @@ func (server *AuthServer) ChangePassword(_ context.Context, req *proto.ChangePas
 	}
 
 	server.Logger.Infof("Password change requested for user: %s", req.GetUserId())
-	
+
 	// Call the account management service to handle password change
 	err := server.AccountService.ChangePassword(req.GetUserId(), req.GetOldPassword(), req.GetNewPassword())
 	if err != nil {
 		server.Logger.Errorf("Password change failed for user %s: %v", req.GetUserId(), err)
 		return nil, MapError(err)
 	}
-	
+
 	return &proto.ChangePasswordResponse{
 		Success: true,
 		Message: "Password changed successfully",
@@ -148,14 +147,14 @@ func (server *AuthServer) ResetPassword(_ context.Context, req *proto.ResetPassw
 	}
 
 	server.Logger.Infof("Password reset attempted with token: %s", req.GetToken()[:8]+"...")
-	
+
 	// Call the account management service to handle password reset
 	err := server.AccountService.ResetPassword(req.GetToken(), req.GetNewPassword())
 	if err != nil {
 		server.Logger.Errorf("Password reset failed: %v", err)
 		return nil, MapError(err)
 	}
-	
+
 	return &proto.ResetPasswordResponse{
 		Success: true,
 		Message: "Password reset successfully",

@@ -33,7 +33,7 @@ lint: install-golangci ## Linter for developers
 	$(LINT_PATH)/golangci-lint run --timeout=5m -c .golangci.yml
 
 lint-fix:
-	$(LINT_PATH)/golangci-lint run --timeout=5m -c .golangci.yml --fix
+	$(LINT_PATH)/golangci-lint run --timeout=5m -c .golangci.yml --fix=
 
 install-golangci: ## Install the correct version of lint
 	@GOBIN=$(LINT_PATH) go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.58.1
